@@ -248,7 +248,9 @@ public partial class ProfilesPage : UserControl
                     Place(BodyGrid, DeviceCell(_data.Profiles[i], row), dr, 2 + i);
 
                 // An LG TV gets a row of its own for power control, under its display.
-                if (row.Section == Section.Video && _data.LgTvs.TryGetValue(row.Id, out var tvLink) && !tvLink.NotATv)
+                if (row.Section == Section.Video && _data.LgTvs.TryGetValue(row.Id, out var tvLink) && !tvLink.NotATv
+                    // Only under LG displays. A TV that's off isn't detected, so an undetected one keeps its row.
+                    && _hub.Displays.FirstOrDefault(d => d.Id == row.Id) is not { IsLg: false })
                 {
                     int lr = AddRow(LgRowHeight);
                     Place(BodyGrid, new Border { Background = new SolidColorBrush(Color.FromArgb(0x08, 0xFF, 0xFF, 0xFF)) }, lr, 0, columns);

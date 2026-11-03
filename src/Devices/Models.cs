@@ -28,6 +28,9 @@ public sealed class DisplayDevice
     public int ScalePercent { get; init; }
 
     public string Glyph => IsInternal ? "\uE7F8" : "\uE7F4";
+
+    /// <summary>An LG-made display ("GSM" in its EDID). LG Display laptop panels report "LGD" and don't count.</summary>
+    public bool IsLg => Manufacturer == "LG";
     public bool IsSecondary => IsActive && !IsPrimary;
     public bool IsInactive => !IsActive;
     public string HdrText => HdrEnabled ? "HDR on" : "HDR capable";

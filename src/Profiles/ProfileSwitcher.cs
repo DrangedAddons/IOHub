@@ -194,10 +194,16 @@ public sealed class ProfileSwitcher(DeviceHub hub, ProfileService profiles)
 
         // An LG display with "TV" in its name gets an LG TV row in Profiles, to pair it. Someone with an LG TV whose
         // name doesn't say so can still pair it from there once it's listed; LG monitors aren't offered.
-        foreach (var d in hub.Displays.Where(d => d.Manufacturer == "LG" && d.Name.Contains("TV", StringComparison.OrdinalIgnoreCase)
+        foreach (var d in hub.Displays.Where(d => d.IsLg && d.Name.Contains("TV", StringComparison.OrdinalIgnoreCase)
                                                   && !profiles.Data.LgTvs.ContainsKey(d.Id)))
         {
             profiles.Data.LgTvs[d.Id] = new LgTvLink { Name = d.Name };
+            changed = true;
+        }
+        // An LG entry on a display that's connected and isn't an LG is wrong (imported or stale data): drop it.
+        foreach (var d in hub.Displays.Where(d => !d.IsLg && profiles.Data.LgTvs.ContainsKey(d.Id)).ToList())
+        {
+            profiles.Data.LgTvs.Remove(d.Id);
             changed = true;
         }
         if (changed) profiles.SaveQuietly();
@@ -208,7 +214,7 @@ public sealed class ProfileSwitcher(DeviceHub hub, ProfileService profiles)
         var waitFor = new List<string>();
         foreach (var id in displayIds)
         {
-            if (!profiles.Data.LgTvs.TryGetValue(id, out var tv) || !tv.IsPaired || tv.NotATv) continue;
+            if (!IsLgTv(id, out var tv)) continue;
             var options = profile != null && profile.LgTv.TryGetValue(id, out var o) ? o : null;
             // A restore turns a TV back on if the old setup used it; a profile only if it's set to.
             if (profile != null && options is not { PowerOn: true }) continue;
@@ -242,7 +248,7 @@ public sealed class ProfileSwitcher(DeviceHub hub, ProfileService profiles)
         foreach (var (id, options) in previous.LgTv)
         {
             if (!options.PowerOff || keeping.Contains(id)) continue;
-            if (!profiles.Data.LgTvs.TryGetValue(id, out var tv) || !tv.IsPaired || tv.NotATv) continue;
+            if (!IsLgTv(id, out var tv)) continue;
             SwitchLog.Write($"  LG {NameOf(id)}: power off");
             if (await LgWebOs.PowerOffAsync(tv) is { } e) problems.Add(e);
         }
@@ -274,9 +280,19 @@ public sealed class ProfileSwitcher(DeviceHub hub, ProfileService profiles)
         foreach (var (id, options) in profile.LgTv)
         {
             if (options.HdmiInput is < 1 or > 4 || !profile.Displays.Contains(id)) continue;
-            if (!profiles.Data.LgTvs.TryGetValue(id, out var tv) || !tv.IsPaired || tv.NotATv) continue;
+            if (!IsLgTv(id, out var tv)) continue;
             await SetInput(id, tv, options.HdmiInput, problems);
         }
+    }
+
+    /// <summary>
+    /// A paired LG TV, and the display really is an LG: commands never go out for a display that's connected and
+    /// isn't one, whatever the saved data says. (One that isn't detected may be a TV that's off.)
+    /// </summary>
+    bool IsLgTv(string displayId, out LgTvLink tv)
+    {
+        if (!profiles.Data.LgTvs.TryGetValue(displayId, out tv!) || !tv.IsPaired || tv.NotATv) return false;
+        return hub.Displays.FirstOrDefault(d => d.Id == displayId) is not { IsLg: false };
     }
 
     string NameOf(string displayId) =>
