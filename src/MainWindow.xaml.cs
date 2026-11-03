@@ -50,7 +50,7 @@ public partial class MainWindow : Window
         _overviewPage.OpenProfiles += () => ProfilesNav.IsChecked = true;
         _overviewPage.SwitchRequested += p => _ = _switcher.SwitchTo(p);
         _devicesPage = new DevicesPage(_hub, _settings);
-        _profilesPage = new ProfilesPage(_hub, _profiles, _settings);
+        _profilesPage = new ProfilesPage(_hub, _profiles, _settings) { TvWanted = _switcher.StopTurnOff };
         _triggersPage = new TriggersPage(_profiles, _engine, _settings);
         _updates = new UpdateChecker(_settings, Dispatcher);
         _updates.Found += OnUpdateFound;

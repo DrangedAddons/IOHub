@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.1
+- **A TV turned off stays off.** Auto return switched the TV back to its old input and turned it off straight away.
+  Switching inputs wakes the device there over HDMI-CEC (an Apple TV, say); one still waking when the TV went off
+  missed the TV's "everyone off" signal and turned the TV back on. IO Hub now leaves the TV on the old input for
+  8 seconds first, so that device is awake and goes to sleep with the TV. For 20 seconds after turning a TV off (Auto
+  off or Auto return), if it comes back on by itself IO Hub turns it off once more, and `switch.log` says so.
+- This happens in the background, so switching doesn't wait for it. Switching back to a profile that uses the TV,
+  or *Turn it on now*, cancels it straight away.
+- A TV that's in the middle of turning off counts as off (it can still report itself on for a few seconds).
+
 ## 0.4.0
 - **Xbox controller triggers.** New trigger types under *Xbox controller*:
   - *Controller buttons*: press, double tap, triple tap or hold a button combination (like View + Menu) to switch

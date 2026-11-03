@@ -1027,8 +1027,12 @@ public partial class ProfilesPage : UserControl
         _ = Pair(row, tv, ip.Trim(), tv.Name);
     }
 
+    /// <summary>Set by the main window: a TV is being turned on by hand, so stop anything keeping it off.</summary>
+    public Action<string>? TvWanted { get; set; }
+
     async Task TryTv(Row row, LgTvLink tv, Func<LgTvLink, Task<string?>> action, string what)
     {
+        if (what == "on") TvWanted?.Invoke(row.Id);
         _tvBusy[row.Id] = $"Turning it {what}…";
         Rebuild();
         string? error;

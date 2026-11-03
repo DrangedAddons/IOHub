@@ -168,16 +168,20 @@ public static class LgWebOs
             tv.AddMacs(await session.MacsAsync());
             var power = await session.RequestAsync("ssap://com.webos.service.tvpower/power/getPowerState");
             var state = (string?)power?["payload"]?["state"];
+            // While it's going off it can still say "Active", with what it's busy doing alongside ("Request Power Off").
+            var processing = (string?)power?["payload"]?["processing"] ?? "";
+            bool goingOff = processing.Contains("Off", StringComparison.OrdinalIgnoreCase) || processing.Contains("Standby", StringComparison.OrdinalIgnoreCase)
+                            || processing.Contains("Suspend", StringComparison.OrdinalIgnoreCase);
             var app = (string?)(await session.RequestAsync("ssap://com.webos.applicationManager/getForegroundAppInfo"))?["payload"]?["appId"];
             await session.CloseAsync();
-            LgPower result = state switch
+            LgPower result = goingOff ? LgPower.Standby : state switch
             {
                 "Power Off" or "Suspend" or "Active Standby" => LgPower.Standby,
                 "Screen Off" => LgPower.ScreenOff,
                 null => string.IsNullOrEmpty(app) ? LgPower.Standby : LgPower.On, // older webOS: no power state, but an app means on
                 _ => LgPower.On,
             };
-            return new(result, string.IsNullOrEmpty(app) ? null : app, state);
+            return new(result, string.IsNullOrEmpty(app) ? null : app, processing != "" ? $"{state}, {processing}" : state);
         }
         catch { return new(LgPower.Standby, null, "unknown (answers, but wouldn't say)"); }
     }
@@ -261,23 +265,13 @@ public static class LgWebOs
         SendAsync(tv, "ssap://tv/switchInput", new JsonObject { ["inputId"] = $"HDMI_{input}" }, waitForReply: true);
 
     /// <summary>
-    /// Puts the TV back the way <see cref="LgTvLink.ReturnTo"/> says: off, an HDMI input, or the app that was showing.
-    /// "off|app" means it was off on that input: switch back to it first, so the remote turns it on there next time.
+    /// For Auto return on a TV that was on: back to the input or app it was showing (see <see cref="LgTvLink.ReturnTo"/>).
+    /// Turning off is the switcher's job, because it has to wait and watch afterwards.
     /// </summary>
-    public static async Task<string?> ReturnAsync(LgTvLink tv, string returnTo)
-    {
-        if (returnTo == "off") return await PowerOffAsync(tv);
-        if (returnTo.StartsWith("off|"))
-        {
-            var input = await ShowAsync(tv, returnTo[4..]);
-            await Task.Delay(1500); // let the TV settle on that input before it's turned off, or it may not keep it
-            return await PowerOffAsync(tv) ?? input;
-        }
-        return await ShowAsync(tv, returnTo);
-    }
+    public static Task<string?> ReturnAsync(LgTvLink tv, string appId) => ShowAppAsync(tv, appId);
 
     /// <summary>Switches to an HDMI input, or launches the app, by its webOS app id.</summary>
-    static Task<string?> ShowAsync(LgTvLink tv, string appId)
+    public static Task<string?> ShowAppAsync(LgTvLink tv, string appId)
     {
         var hdmi = Regex.Match(appId, @"^com\.webos\.app\.hdmi(\d)$", RegexOptions.IgnoreCase);
         if (hdmi.Success) return SetHdmiAsync(tv, int.Parse(hdmi.Groups[1].Value));

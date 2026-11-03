@@ -229,6 +229,7 @@ public sealed class ProfileSwitcher(DeviceHub hub, ProfileService profiles)
             if (!IsLgTv(id, out var tv)) continue;
             var options = profile != null && profile.LgTv.TryGetValue(id, out var o) ? o : null;
             void Log(string s) => SwitchLog.Write($"  LG {NameOf(id)}: {s}");
+            StopTurnOff(id); // it's wanted again
 
             // Coming from a profile that already used this TV, it's showing the PC: what was there before is already noted.
             if (options is { Leaving: LgLeave.AutoReturn } && previous?.Displays.Contains(id) != true)
@@ -299,7 +300,10 @@ public sealed class ProfileSwitcher(DeviceHub hub, ProfileService profiles)
         log($"woke up on {app}; will switch back to it, then turn it off");
     }
 
-    /// <summary>TVs the previous profile used and the next one doesn't: left, turned off, or returned to how they were.</summary>
+    /// <summary>
+    /// TVs the previous profile used and the next one doesn't: left, turned off, or returned to how they were.
+    /// Turning off (and switching back to the old input first) carries on in the background: see <see cref="TurnOffAndGuard"/>.
+    /// </summary>
     async Task PowerOffTvs(Profile previous, IEnumerable<string> keep, List<string> problems)
     {
         var keeping = keep.ToHashSet();
@@ -307,18 +311,94 @@ public sealed class ProfileSwitcher(DeviceHub hub, ProfileService profiles)
         {
             if (options.Leaving == LgLeave.Stay || keeping.Contains(id) || !previous.Displays.Contains(id)) continue;
             if (!IsLgTv(id, out var tv)) continue;
-            if (options.Leaving == LgLeave.TurnOff)
-            {
-                SwitchLog.Write($"  LG {NameOf(id)}: power off");
-                if (await LgWebOs.PowerOffAsync(tv) is { } e) problems.Add(e);
-                continue;
-            }
+            if (options.Leaving == LgLeave.TurnOff) { StartTurnOff(id, tv, null); continue; }
+
             var returnTo = tv.ReturnTo;
-            if (returnTo == "") { SwitchLog.Write($"  LG {NameOf(id)}: nothing noted to return to, left as it is"); continue; }
-            SwitchLog.Write($"  LG {NameOf(id)}: return to \"{returnTo}\"");
-            if (await LgWebOs.ReturnAsync(tv, returnTo) is { } error) problems.Add(error);
             tv.ReturnTo = "";
             profiles.SaveQuietly();
+            if (returnTo == "") { SwitchLog.Write($"  LG {NameOf(id)}: nothing noted to return to, left as it is"); continue; }
+            if (returnTo == "off") { StartTurnOff(id, tv, null); continue; }
+            if (returnTo.StartsWith("off|")) { StartTurnOff(id, tv, returnTo[4..]); continue; }
+            // It was on: back to what it was showing, and it stays on.
+            SwitchLog.Write($"  LG {NameOf(id)}: back to {returnTo}");
+            if (await LgWebOs.ReturnAsync(tv, returnTo) is { } error) problems.Add(error);
+        }
+    }
+
+    // TVs being turned off in the background, by display id. A switch that uses the TV again cancels it.
+    readonly Dictionary<string, CancellationTokenSource> _turningOff = [];
+    static readonly TimeSpan SettleOnOldInput = TimeSpan.FromSeconds(8);
+    static readonly TimeSpan GuardFor = TimeSpan.FromSeconds(20);
+
+    void StartTurnOff(string id, LgTvLink tv, string? backTo)
+    {
+        StopTurnOff(id);
+        var stop = new CancellationTokenSource();
+        _turningOff[id] = stop;
+        _ = TurnOffAndGuard(id, tv, backTo, stop);
+    }
+
+    /// <summary>
+    /// Stops a background turn-off of this display's TV: IO Hub is about to use it again, or someone turned it on from
+    /// the Profiles page.
+    /// </summary>
+    public void StopTurnOff(string displayId)
+    {
+        if (!_turningOff.Remove(displayId, out var stop)) return;
+        stop.Cancel();
+        SwitchLog.Write($"  LG {NameOf(displayId)}: no longer turning it off (it's wanted again)");
+    }
+
+    /// <summary>
+    /// Turns the TV off and keeps it off. With <paramref name="backTo"/> (the input it was off on), switches to that
+    /// first and gives it <see cref="SettleOnOldInput"/>: switching inputs wakes the device there over HDMI-CEC (an
+    /// Apple TV, say), and a device still waking up when the TV goes off misses the TV's "everyone off" signal and
+    /// turns the TV back on. Then, for <see cref="GuardFor"/>, a TV that comes back on by itself is turned off once more.
+    /// </summary>
+    async Task TurnOffAndGuard(string id, LgTvLink tv, string? backTo, CancellationTokenSource stop)
+    {
+        void Log(string s) => SwitchLog.Write($"  LG {NameOf(id)}: {s}");
+        try
+        {
+            if (backTo != null)
+            {
+                Log($"back to {backTo}, then off in {SettleOnOldInput.TotalSeconds:0} s");
+                if (await LgWebOs.ShowAppAsync(tv, backTo) is { } e) Log(e);
+                await Task.Delay(SettleOnOldInput, stop.Token);
+            }
+            Log("power off");
+            if (await LgWebOs.PowerOffAsync(tv) is { } error)
+            {
+                Log(error);
+                Notice?.Invoke("Couldn't turn the TV off", error, null);
+                return;
+            }
+
+            var clock = Stopwatch.StartNew();
+            bool turnedOffAgain = false;
+            await Task.Delay(TimeSpan.FromSeconds(3), stop.Token); // it takes a moment to go off
+            while (clock.Elapsed < GuardFor)
+            {
+                var state = await LgWebOs.GetStateAsync(tv);
+                stop.Token.ThrowIfCancellationRequested();
+                if (state.Power is LgPower.On or LgPower.ScreenOff)
+                {
+                    if (turnedOffAgain) { Log("came back on again; leaving it on"); return; }
+                    Log($"came back on by itself {clock.Elapsed.TotalSeconds:0} s after being turned off (showing {state.AppId ?? "nothing"}); turning it off again");
+                    turnedOffAgain = true;
+                    await LgWebOs.PowerOffAsync(tv);
+                    await Task.Delay(TimeSpan.FromSeconds(3), stop.Token);
+                    continue;
+                }
+                await Task.Delay(TimeSpan.FromSeconds(2), stop.Token);
+            }
+            Log(turnedOffAgain ? "stayed off the second time" : "stayed off");
+        }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            if (_turningOff.TryGetValue(id, out var current) && current == stop) _turningOff.Remove(id);
+            stop.Dispose();
         }
     }
 
