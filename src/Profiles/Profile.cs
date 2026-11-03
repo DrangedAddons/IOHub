@@ -56,9 +56,25 @@ public sealed class Profile
 }
 
 /// <param name="PowerOn">Turn the TV on when switching to this profile (before the displays change).</param>
-/// <param name="PowerOff">Turn the TV off when switching from this profile to one that doesn't use it.</param>
+/// <param name="PowerOff">0.2.0's "Auto off". Read for old files only (it means <see cref="LgLeave.TurnOff"/>); see <see cref="Leaving"/>.</param>
 /// <param name="HdmiInput">1–4 to switch the TV to that input when it's turned on; 0 leaves it.</param>
-public sealed record LgTvOptions(bool PowerOn = false, bool PowerOff = false, int HdmiInput = 0);
+/// <param name="Leave">What happens to the TV when switching from this profile to one that doesn't use it.</param>
+public sealed record LgTvOptions(bool PowerOn = false, bool PowerOff = false, int HdmiInput = 0, LgLeave? Leave = null)
+{
+    [JsonIgnore] public LgLeave Leaving => Leave ?? (PowerOff ? LgLeave.TurnOff : LgLeave.Stay);
+
+    public LgTvOptions WithLeaving(LgLeave leave) => this with { Leave = leave, PowerOff = false };
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter<LgLeave>))]
+public enum LgLeave
+{
+    /// <summary>Leave the TV as it is.</summary>
+    Stay,
+    TurnOff,
+    /// <summary>Back the way it was before IO Hub switched to it: off if it was off, else its previous input or app.</summary>
+    PutBack,
+}
 
 public static class ProfileColors
 {

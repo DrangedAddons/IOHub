@@ -920,6 +920,8 @@ public partial class ProfilesPage : UserControl
 
     // Display ids with a pairing in progress, so the row can say so and a second click doesn't start another.
     readonly HashSet<string> _pairing = [];
+    /// <summary>TVs being turned on or off from their menu, with what the button says meanwhile.</summary>
+    readonly Dictionary<string, string> _tvBusy = [];
 
     /// <summary>
     /// The label for an LG TV's power row: which TV it is and where, or a Pair button. The menu has the rest
@@ -931,14 +933,15 @@ public partial class ProfilesPage : UserControl
         stack.Children.Add(new TextBlock { Text = "LG TV power", Style = Res<Style>("ItemTitle"), FontSize = 12.5 });
 
         string text = _pairing.Contains(row.Id) ? "Accept the prompt on the TV…"
+            : _tvBusy.TryGetValue(row.Id, out var busy) ? busy
             : tv.IsPaired ? $"{(tv.Name != "" ? tv.Name : "LG TV")} · {tv.Ip}  ▾"
             : "Pair this TV  ▾";
         var button = new Button
         {
             Style = Res<Style>("GhostButton"), Padding = new Thickness(8, 2, 8, 3), Margin = new Thickness(0, 4, 0, 0),
-            HorizontalAlignment = HorizontalAlignment.Left, IsEnabled = !_pairing.Contains(row.Id),
+            HorizontalAlignment = HorizontalAlignment.Left, IsEnabled = !_pairing.Contains(row.Id) && !_tvBusy.ContainsKey(row.Id),
             Content = new TextBlock { Text = text, FontSize = 11.5, Foreground = Res<Brush>(tv.IsPaired ? "MutedBrush" : "AccentBrush") },
-            ToolTip = tv.IsPaired ? "Paired: IO Hub can turn this TV on and off" + (tv.Mac == "" ? " (on needs the TV's network address; pair again while it's on)" : "")
+            ToolTip = tv.IsPaired ? "Paired: IO Hub can turn this TV on and off" + (tv.Mac == "" ? " (waking it from fully off needs the TV's network address; pair again while it's on)" : "")
                                   : "Connect IO Hub to the TV over your network. The TV asks once to allow it.",
         };
         button.Click += async (_, _) =>
@@ -946,8 +949,8 @@ public partial class ProfilesPage : UserControl
             var menu = new ContextMenu { PlacementTarget = button, Placement = PlacementMode.Bottom };
             if (tv.IsPaired)
             {
-                menu.Items.Add(MenuItem("Turn it on now", "", true, () => _ = TryTv(tv, LgWebOs.PowerOnAsync, "on")));
-                menu.Items.Add(MenuItem("Turn it off now", "", true, () => _ = TryTv(tv, LgWebOs.PowerOffAsync, "off")));
+                menu.Items.Add(MenuItem("Turn it on now", "", true, () => _ = TryTv(row, tv, t => LgWebOs.PowerOnAsync(t, s => SwitchLog.Write($"LG {t.Name}: {s}")), "on")));
+                menu.Items.Add(MenuItem("Turn it off now", "", true, () => _ = TryTv(row, tv, LgWebOs.PowerOffAsync, "off")));
                 menu.Items.Add(new Separator());
             }
             // Look for TVs while the menu builds; it's a two-second listen.
@@ -964,10 +967,11 @@ public partial class ProfilesPage : UserControl
             int at = menu.Items.IndexOf(searching);
             if (at < 0) return; // menu closed meanwhile
             menu.Items.Remove(searching);
+            // The search only finds TVs to pair. The paired one is reached by its address whether or not it shows up here.
             if (found.Count == 0)
-                menu.Items.Insert(at, new MenuItem { Header = "No LG TVs answered (is it on?)", IsEnabled = false });
+                menu.Items.Insert(at, new MenuItem { Header = tv.IsPaired ? "No other LG TVs found to pair" : "No LG TVs answered (is it on?)", IsEnabled = false });
             foreach (var f in found)
-                menu.Items.Insert(at++, MenuItem($"Pair with {f.Name}  ({f.Ip})", "", true, () => _ = Pair(row, tv, f.Ip, f.Name)));
+                menu.Items.Insert(at++, MenuItem(f.Ip == tv.Ip && tv.IsPaired ? $"Pair again with {f.Name}  ({f.Ip})" : $"Pair with {f.Name}  ({f.Ip})", "", true, () => _ = Pair(row, tv, f.Ip, f.Name)));
         };
         stack.Children.Add(button);
         return stack;
@@ -977,7 +981,7 @@ public partial class ProfilesPage : UserControl
     {
         _pairing.Add(row.Id);
         Rebuild();
-        var (key, error) = await LgWebOs.PairAsync(ip);
+        var (key, macs, error) = await LgWebOs.PairAsync(ip);
         _pairing.Remove(row.Id);
         if (key == null)
         {
@@ -986,12 +990,14 @@ public partial class ProfilesPage : UserControl
             Rebuild();
             return;
         }
+        if (ip != tv.Ip) tv.Mac = "";
         tv.Ip = ip;
         tv.ClientKey = key;
+        tv.ReturnTo = "";
         if (name != "") tv.Name = name;
-        // The TV is on right now, so the network knows its MAC address: needed to wake it later.
-        tv.Mac = LgWebOs.MacOf(ip);
-        SwitchLog.Write($"Paired LG TV {tv.Name} at {ip}" + (tv.Mac != "" ? $" ({tv.Mac})" : " (MAC not found)"));
+        // Its network cards (the TV's own list, and the one the network sees now it's on): needed to wake it later.
+        tv.AddMacs(macs);
+        SwitchLog.Write($"Paired LG TV {tv.Name} at {ip}" + (tv.Mac != "" ? $" (MAC {tv.Mac})" : " (MAC not found)"));
         Commit();
     }
 
@@ -1009,9 +1015,14 @@ public partial class ProfilesPage : UserControl
         _ = Pair(row, tv, ip.Trim(), tv.Name);
     }
 
-    async Task TryTv(LgTvLink tv, Func<LgTvLink, Task<string?>> action, string what)
+    async Task TryTv(Row row, LgTvLink tv, Func<LgTvLink, Task<string?>> action, string what)
     {
-        var error = await action(tv);
+        _tvBusy[row.Id] = $"Turning it {what}…";
+        Rebuild();
+        string? error;
+        try { error = await action(tv); }
+        finally { _tvBusy.Remove(row.Id); }
+        Commit(); // keeps any MAC addresses learned on the way
         if (error != null) DarkDialog.Show(Window.GetWindow(this), $"Couldn't turn the TV {what}", error);
     }
 
@@ -1034,28 +1045,51 @@ public partial class ProfilesPage : UserControl
         }
         panel.Children.Add(Switch("Auto on", options.PowerOn, v => Set(options with { PowerOn = v }),
             $"Turn the TV on when switching to {p.Name}"));
-        panel.Children.Add(Switch("Auto off", options.PowerOff, v => Set(options with { PowerOff = v }),
-            $"Turn the TV off when switching from {p.Name} to a profile that doesn't use it"));
+        panel.Children.Add(Dropdown(
+            "When leaving: " + LeaveLabel(options.Leaving),
+            $"What happens to the TV when switching from {p.Name} to a profile that doesn't use it",
+            Enum.GetValues<LgLeave>().Select(l => (LeaveLabel(l), LeaveTip(l), l == options.Leaving, (Action)(() => Set(options.WithLeaving(l)))))));
+        panel.Children.Add(Dropdown(
+            options.HdmiInput is >= 1 and <= 4 ? $"Input: HDMI {options.HdmiInput}" : "Input: unchanged",
+            "Switch the TV to this input when switching to this profile",
+            new[] { 0, 1, 2, 3, 4 }.Select(n => (n == 0 ? "Leave it" : $"HDMI {n}", (string?)null, n == options.HdmiInput, (Action)(() => Set(options with { HdmiInput = n }))))));
+        if (!usable) panel.Opacity = 0.45;
+        return panel;
+    }
 
-        var hdmi = new Button { Style = Res<Style>("IconButton"), Width = double.NaN, Height = double.NaN, Padding = new Thickness(4, 1, 4, 1), FontFamily = Res<FontFamily>("UiFont"),
+    /// <summary>A small "Label ▾" button that opens a menu of choices; the current one is bold.</summary>
+    Button Dropdown(string label, string tip, IEnumerable<(string Text, string? Tip, bool Current, Action Pick)> choices)
+    {
+        var button = new Button { Style = Res<Style>("IconButton"), Width = double.NaN, Height = double.NaN, Padding = new Thickness(4, 1, 4, 1), FontFamily = Res<FontFamily>("UiFont"),
             HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 2, 0, 0),
-            Content = new TextBlock { Text = options.HdmiInput is >= 1 and <= 4 ? $"Input: HDMI {options.HdmiInput} ▾" : "Input: unchanged ▾", FontSize = 11 },
-            ToolTip = "Switch the TV to this input when switching to this profile" };
-        hdmi.Click += (_, _) =>
+            Content = new TextBlock { Text = label + " ▾", FontSize = 11 }, ToolTip = tip };
+        button.Click += (_, _) =>
         {
-            var menu = new ContextMenu { PlacementTarget = hdmi, Placement = PlacementMode.Bottom };
-            foreach (var n in new[] { 0, 1, 2, 3, 4 })
+            var menu = new ContextMenu { PlacementTarget = button, Placement = PlacementMode.Bottom };
+            foreach (var c in choices)
             {
-                var item = new MenuItem { Header = n == 0 ? "Leave it" : $"HDMI {n}", FontWeight = n == options.HdmiInput ? FontWeights.SemiBold : FontWeights.Normal };
-                item.Click += (_, _) => Set(options with { HdmiInput = n });
+                var item = new MenuItem { Header = c.Text, ToolTip = c.Tip, FontWeight = c.Current ? FontWeights.SemiBold : FontWeights.Normal };
+                item.Click += (_, _) => c.Pick();
                 menu.Items.Add(item);
             }
             menu.IsOpen = true;
         };
-        panel.Children.Add(hdmi);
-        if (!usable) panel.Opacity = 0.45;
-        return panel;
+        return button;
     }
+
+    static string LeaveLabel(LgLeave leave) => leave switch
+    {
+        LgLeave.TurnOff => "turn it off",
+        LgLeave.PutBack => "put it back",
+        _ => "leave it",
+    };
+
+    static string? LeaveTip(LgLeave leave) => leave switch
+    {
+        LgLeave.TurnOff => "Turn the TV off",
+        LgLeave.PutBack => "Back the way it was before: off if it was off, otherwise the input or app it was showing (HDMI 1, Netflix…)",
+        _ => "Leave the TV on, on the PC's input",
+    };
 
     // ---------------- actions ----------------
 

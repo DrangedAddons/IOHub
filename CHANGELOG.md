@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.0
+- **LG TVs turn on reliably.** IO Hub used to skip the wake-up whenever the TV answered on the network, and a TV with
+  Quick Start+ answers while it's off, so nothing was sent. It now asks the TV whether it's on. If it's in standby it
+  gets Wake-on-LAN plus the TV's own "turn on", repeated until the TV says it's on (up to 40 seconds). If only the
+  picture is off, the picture is turned back on. A profile with *Auto on* now does this even while Windows still
+  lists the TV.
+- Wake-on-LAN goes out every network adapter, to each one's subnet and to the TV's address, so a VPN or virtual
+  adapter can't swallow it. IO Hub learns the TV's network cards (wired and Wi-Fi) from the TV itself when pairing
+  and whenever it's on.
+- If LGTV Companion is installed, IO Hub asks it to turn the TV on as well, in case its route works where IO Hub's
+  doesn't. It isn't needed.
+- **When leaving: leave it / turn it off / put it back.** Replaces *Auto off*. *Put it back* returns the TV to how it
+  was before IO Hub switched to it: off if it was off, otherwise the input or app it was showing (Apple TV on HDMI 1,
+  Netflix…). Profiles with *Auto off* on carry over as *turn it off*.
+- Searching for TVs to pair asks from every network adapter. With a TV already paired, an empty search says "No other
+  LG TVs found to pair" (the paired TV is reached by its address either way).
+- "Turn it on now" shows that it's working, and every step of turning a TV on goes to `switch.log`: its power state,
+  where the wake-up went, and how long it took.
+
 ## 0.2.0
 - **Displays come back at their own refresh rate.** Turning a display back on (switching from the TV to the monitor)
   let Windows pick its mode, which is often 60 Hz. IO Hub now remembers each display's resolution and refresh rate

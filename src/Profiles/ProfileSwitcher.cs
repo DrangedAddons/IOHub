@@ -48,7 +48,7 @@ public sealed class ProfileSwitcher(DeviceHub hub, ProfileService profiles)
             var previous = profiles.Profiles.FirstOrDefault(p => p.Id == profiles.LastAppliedId);
             var problems = new List<string>();
 
-            if (profile.Displays.Count > 0) await PowerOnTvs(profile.Displays, profile, problems);
+            if (profile.Displays.Count > 0) await PowerOnTvs(profile.Displays, profile, previous, problems);
             SetAudio(profile.AudioOutput, "sound output", problems);
             SetAudio(profile.AudioInput, "microphone", problems);
 
@@ -117,7 +117,7 @@ public sealed class ProfileSwitcher(DeviceHub hub, ProfileService profiles)
             {
                 // A TV the old setup used may have been turned off since; it has to be on before Windows can use it.
                 var missing = snapshot.Displays.ActiveIds.Where(id => hub.Displays.All(d => d.Id != id)).ToList();
-                if (missing.Count > 0) await PowerOnTvs(missing, null, problems);
+                if (missing.Count > 0) await PowerOnTvs(missing, null, null, problems);
             }
             SetAudio(snapshot.Output, "sound output", problems);
             SetAudio(snapshot.Input, "microphone", problems);
@@ -200,6 +200,13 @@ public sealed class ProfileSwitcher(DeviceHub hub, ProfileService profiles)
             profiles.Data.LgTvs[d.Id] = new LgTvLink { Name = d.Name };
             changed = true;
         }
+        // A paired TV that's on: note its network card for waking it later, if that isn't known yet.
+        foreach (var (id, tv) in profiles.Data.LgTvs)
+            if (tv.IsPaired && !tv.Macs.Any() && hub.Displays.Any(d => d.Id == id && d.IsActive) && tv.AddMacs([LgWebOs.MacOf(tv.Ip)]))
+            {
+                SwitchLog.Write($"LG {NameOf(id)}: learned MAC {tv.Mac}");
+                changed = true;
+            }
         // An LG entry on a display that's connected and isn't an LG is wrong (imported or stale data): drop it.
         foreach (var d in hub.Displays.Where(d => !d.IsLg && profiles.Data.LgTvs.ContainsKey(d.Id)).ToList())
         {
@@ -209,26 +216,35 @@ public sealed class ProfileSwitcher(DeviceHub hub, ProfileService profiles)
         if (changed) profiles.SaveQuietly();
     }
 
-    async Task PowerOnTvs(IEnumerable<string> displayIds, Profile? profile, List<string> problems)
+    /// <summary>
+    /// Before a profile uses the TVs: notes how each one is (for "Put it back"), turns on the ones it should, sets
+    /// their input, and waits for Windows to see the ones that were off. Whether a TV needs turning on is the TV's
+    /// call (its power state), not whether Windows still lists it: a TV in standby can stay listed.
+    /// </summary>
+    async Task PowerOnTvs(IEnumerable<string> displayIds, Profile? profile, Profile? previous, List<string> problems)
     {
         var waitFor = new List<string>();
         foreach (var id in displayIds)
         {
             if (!IsLgTv(id, out var tv)) continue;
             var options = profile != null && profile.LgTv.TryGetValue(id, out var o) ? o : null;
+            void Log(string s) => SwitchLog.Write($"  LG {NameOf(id)}: {s}");
+
+            // Coming from a profile that already used this TV, it's showing the PC: what was there before is already noted.
+            if (options is { Leaving: LgLeave.PutBack } && previous?.Displays.Contains(id) != true)
+                await NoteReturn(tv, options, Log);
+
             // A restore turns a TV back on if the old setup used it; a profile only if it's set to.
-            if (profile != null && options is not { PowerOn: true }) continue;
-            bool detected = hub.Displays.Any(d => d.Id == id);
-            if (!detected)
+            if (profile == null || options is { PowerOn: true })
             {
-                SwitchLog.Write($"  LG {NameOf(id)}: power on");
-                var waking = Stopwatch.StartNew();
-                if (await LgWebOs.PowerOnAsync(tv) is { } e) { problems.Add(e); continue; }
-                SwitchLog.Write($"  LG {NameOf(id)}: awake after {waking.ElapsedMilliseconds} ms");
-                waitFor.Add(id);
+                bool detected = hub.Displays.Any(d => d.Id == id);
+                Log("power on" + (detected ? " (Windows still lists it)" : ""));
+                if (await LgWebOs.PowerOnAsync(tv, Log) is { } e) { problems.Add(e); continue; }
+                if (!detected) waitFor.Add(id);
             }
             if (options is { HdmiInput: >= 1 and <= 4 }) await SetInput(id, tv, options.HdmiInput, problems);
         }
+        profiles.SaveQuietly(); // MAC addresses learned, what to put back
 
         // Windows only sees the TV once it's on and the HDMI link is up, which can take a while.
         if (waitFor.Count == 0) return;
@@ -242,15 +258,43 @@ public sealed class ProfileSwitcher(DeviceHub hub, ProfileService profiles)
         problems.Add($"{string.Join(", ", waitFor.Select(NameOf))} didn't come on within 30 seconds.");
     }
 
+    /// <summary>
+    /// Remembers what the TV is doing before IO Hub takes it over: "off", or the input or app it's showing. If it's
+    /// already on this profile's input, the PC is on it already, so an earlier note is kept.
+    /// </summary>
+    async Task NoteReturn(LgTvLink tv, LgTvOptions options, Action<string> log)
+    {
+        var state = await LgWebOs.GetStateAsync(tv);
+        var returnTo = state.Power is LgPower.Unreachable or LgPower.Standby ? "off" : state.AppId ?? "";
+        if (options.HdmiInput is >= 1 and <= 4 && returnTo.Equals($"com.webos.app.hdmi{options.HdmiInput}", StringComparison.OrdinalIgnoreCase))
+        {
+            log($"already on HDMI {options.HdmiInput}; keeping \"{(tv.ReturnTo == "" ? "nothing" : tv.ReturnTo)}\" to put back");
+            return;
+        }
+        tv.ReturnTo = returnTo;
+        log($"was {state.Power} ({state.State ?? "no answer"}), showing {state.AppId ?? "nothing"}; will put back \"{(returnTo == "" ? "nothing" : returnTo)}\"");
+    }
+
+    /// <summary>TVs the previous profile used and the next one doesn't: left, turned off, or put back as they were.</summary>
     async Task PowerOffTvs(Profile previous, IEnumerable<string> keep, List<string> problems)
     {
         var keeping = keep.ToHashSet();
         foreach (var (id, options) in previous.LgTv)
         {
-            if (!options.PowerOff || keeping.Contains(id)) continue;
+            if (options.Leaving == LgLeave.Stay || keeping.Contains(id) || !previous.Displays.Contains(id)) continue;
             if (!IsLgTv(id, out var tv)) continue;
-            SwitchLog.Write($"  LG {NameOf(id)}: power off");
-            if (await LgWebOs.PowerOffAsync(tv) is { } e) problems.Add(e);
+            if (options.Leaving == LgLeave.TurnOff)
+            {
+                SwitchLog.Write($"  LG {NameOf(id)}: power off");
+                if (await LgWebOs.PowerOffAsync(tv) is { } e) problems.Add(e);
+                continue;
+            }
+            var returnTo = tv.ReturnTo;
+            if (returnTo == "") { SwitchLog.Write($"  LG {NameOf(id)}: nothing noted to put back, left as it is"); continue; }
+            SwitchLog.Write($"  LG {NameOf(id)}: put back \"{returnTo}\"");
+            if (await LgWebOs.ReturnAsync(tv, returnTo) is { } error) problems.Add(error);
+            tv.ReturnTo = "";
+            profiles.SaveQuietly();
         }
     }
 
