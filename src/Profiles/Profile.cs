@@ -36,8 +36,6 @@ public sealed class Profile
     /// <summary>LG TV power options for this profile, per display id. Only used for displays that are LG TVs.</summary>
     public Dictionary<string, LgTvOptions> LgTv { get; set; } = [];
 
-    /// <summary>In <see cref="ProfileData.LgTvs"/>: an LG display someone said isn't a TV, so it isn't offered again.</summary>
-    public const string NotATv = "-";
 
     [JsonIgnore]
     public bool ChangesNothing => Displays.Count == 0 && AudioOutput == null && AudioInput == null && MainInput == null && Camera == null;
@@ -96,9 +94,9 @@ public sealed class ProfileData
     /// </summary>
     public Dictionary<string, Devices.DisplayMode> DisplayModes { get; set; } = [];
 
-    /// <summary>Displays that are LG TVs, by display id → LGTV Companion device ("Device1"). Remembered because a TV
-    /// that's switched off isn't detected at all.</summary>
-    public Dictionary<string, string> LgTvs { get; set; } = [];
+    /// <summary>Displays that are LG TVs, by display id, with how to reach each one. Remembered because a TV that's
+    /// switched off isn't detected at all.</summary>
+    public Dictionary<string, Devices.LgTvLink> LgTvs { get; set; } = [];
 }
 
 /// <summary>The app's one copy of the profiles. Pages that edit them call <see cref="Save"/>; others listen to <see cref="Changed"/>.</summary>

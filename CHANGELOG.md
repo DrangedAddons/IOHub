@@ -11,10 +11,12 @@
   and say so instead of carrying on.
 - **Switch log.** Every switch, its steps, how long Windows took and any problem go to `switch.log` in the data
   folder (Settings → Your data → Open folder), so a problem can be traced.
-- **LG TV power, through LGTV Companion.** An LG TV gets an "LG TV power" row under its display in Profiles: per
-  profile, *Auto on* turns the TV on when switching to that profile (IO Hub waits for it to come up before changing
-  displays), *Auto off* turns it off when switching to a profile that doesn't use it, and *Input* can switch it to an
-  HDMI input. Needs [LGTV Companion](https://github.com/JPersson77/LGTVCompanion) installed with the TV set up in it.
+- **LG TV power, built in.** An LG TV gets an "LG TV power" row under its display in Profiles. *Pair this TV* finds
+  LG TVs on the network (or takes an IP address); the TV asks once to allow IO Hub. Then, per profile: *Auto on* turns
+  the TV on when switching to that profile (IO Hub waits for it to come up before changing displays), *Auto off*
+  turns it off when switching to a profile that doesn't use it, and *Input* switches it to an HDMI input (sent a few
+  times, and again after the displays change, because a TV that's just woken up often ignores the first one).
+  Turning on needs "Turn on via Wi-Fi" (or Quick Start+) enabled on the TV. Nothing else to install.
 
 ## 0.1.3
 - **Uses about a third of the memory.** Sitting in the tray: 32 MB instead of 115 MB. In use, after opening every

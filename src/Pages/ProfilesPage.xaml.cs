@@ -8,6 +8,7 @@ using System.Windows.Threading;
 using IOHub.Devices;
 using IOHub.Profiles;
 using IOHub.Triggers;
+using IOHub.Ui;
 using Trigger = IOHub.Triggers.Trigger;
 
 namespace IOHub.Pages;
@@ -247,14 +248,14 @@ public partial class ProfilesPage : UserControl
                     Place(BodyGrid, DeviceCell(_data.Profiles[i], row), dr, 2 + i);
 
                 // An LG TV gets a row of its own for power control, under its display.
-                if (row.Section == Section.Video && _data.LgTvs.TryGetValue(row.Id, out var tvKey) && tvKey != Profile.NotATv)
+                if (row.Section == Section.Video && _data.LgTvs.TryGetValue(row.Id, out var tvLink) && !tvLink.NotATv)
                 {
                     int lr = AddRow(LgRowHeight);
                     Place(BodyGrid, new Border { Background = new SolidColorBrush(Color.FromArgb(0x08, 0xFF, 0xFF, 0xFF)) }, lr, 0, columns);
                     Place(BodyGrid, new Border { Height = 1, VerticalAlignment = VerticalAlignment.Bottom, Background = Res<Brush>("LineBrush"), Opacity = 0.6 }, lr, 0, columns);
-                    Place(BodyGrid, LgLabel(row, tvKey), lr, 0);
+                    Place(BodyGrid, LgLabel(row, tvLink), lr, 0);
                     for (int i = 0; i < _data.Profiles.Count; i++)
-                        Place(BodyGrid, LgCell(_data.Profiles[i], row, tvKey), lr, 2 + i);
+                        Place(BodyGrid, LgCell(_data.Profiles[i], row, tvLink), lr, 2 + i);
                 }
             }
         }
@@ -915,66 +916,113 @@ public partial class ProfilesPage : UserControl
 
     // ---------------- LG TV power ----------------
 
+    // Display ids with a pairing in progress, so the row can say so and a second click doesn't start another.
+    readonly HashSet<string> _pairing = [];
+
     /// <summary>
-    /// The label for an LG TV's power row: which LGTV Companion TV it is, or what's missing (Companion itself, or
-    /// which of its TVs this display is).
+    /// The label for an LG TV's power row: which TV it is and where, or a Pair button. The menu has the rest
+    /// (try it, pair again, forget, not a TV).
     /// </summary>
-    UIElement LgLabel(Row row, string tvKey)
+    UIElement LgLabel(Row row, LgTvLink tv)
     {
         var stack = new StackPanel { Margin = new Thickness(87, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center };
         stack.Children.Add(new TextBlock { Text = "LG TV power", Style = Res<Style>("ItemTitle"), FontSize = 12.5 });
 
-        FrameworkElement detail;
-        if (!LgCompanion.IsInstalled)
+        string text = _pairing.Contains(row.Id) ? "Accept the prompt on the TV…"
+            : tv.IsPaired ? $"{(tv.Name != "" ? tv.Name : "LG TV")} · {tv.Ip}  ▾"
+            : "Pair this TV  ▾";
+        var button = new Button
         {
-            var get = new Button { Style = Res<Style>("GhostButton"), Padding = new Thickness(8, 2, 8, 3), Margin = new Thickness(0, 4, 0, 0), HorizontalAlignment = HorizontalAlignment.Left,
-                Content = new TextBlock { Text = "Needs LGTV Companion · Get it", FontSize = 11.5 }, ToolTip = LgCompanion.DownloadUrl };
-            get.Click += (_, _) => { try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(LgCompanion.DownloadUrl) { UseShellExecute = true }); } catch { } };
-            detail = get;
-        }
-        else
+            Style = Res<Style>("GhostButton"), Padding = new Thickness(8, 2, 8, 3), Margin = new Thickness(0, 4, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Left, IsEnabled = !_pairing.Contains(row.Id),
+            Content = new TextBlock { Text = text, FontSize = 11.5, Foreground = Res<Brush>(tv.IsPaired ? "MutedBrush" : "AccentBrush") },
+            ToolTip = tv.IsPaired ? "Paired: IO Hub can turn this TV on and off" + (tv.Mac == "" ? " (on needs the TV's network address; pair again while it's on)" : "")
+                                  : "Connect IO Hub to the TV over your network. The TV asks once to allow it.",
+        };
+        button.Click += async (_, _) =>
         {
-            var tvs = LgCompanion.Tvs();
-            var current = tvs.FirstOrDefault(t => t.Key == tvKey);
-            var pick = new Button { Style = Res<Style>("GhostButton"), Padding = new Thickness(8, 2, 8, 3), Margin = new Thickness(0, 4, 0, 0), HorizontalAlignment = HorizontalAlignment.Left,
-                Content = new TextBlock
-                {
-                    Text = current != null ? $"{current.Name} · {current.Ip}  ▾" : tvs.Count == 0 ? "Add the TV in LGTV Companion first" : "Which TV is this?  ▾",
-                    FontSize = 11.5, Foreground = Res<Brush>(current != null ? "MutedBrush" : "WarnBrush"),
-                },
-                ToolTip = "The TV in LGTV Companion that this display is" };
-            pick.Click += (_, _) =>
+            var menu = new ContextMenu { PlacementTarget = button, Placement = PlacementMode.Bottom };
+            if (tv.IsPaired)
             {
-                var menu = new ContextMenu { PlacementTarget = pick, Placement = PlacementMode.Bottom };
-                foreach (var tv in tvs)
-                {
-                    var item = new MenuItem { Header = $"{tv.Name}  ({tv.Ip})", FontWeight = tv.Key == tvKey ? FontWeights.SemiBold : FontWeights.Normal };
-                    item.Click += (_, _) => { _data.LgTvs[row.Id] = tv.Key; Commit(); };
-                    menu.Items.Add(item);
-                }
-                if (tvs.Count == 0) menu.Items.Add(new MenuItem { Header = "No TVs set up in LGTV Companion", IsEnabled = false });
+                menu.Items.Add(MenuItem("Turn it on now", "", true, () => _ = TryTv(tv, LgWebOs.PowerOnAsync, "on")));
+                menu.Items.Add(MenuItem("Turn it off now", "", true, () => _ = TryTv(tv, LgWebOs.PowerOffAsync, "off")));
                 menu.Items.Add(new Separator());
-                var notTv = new MenuItem { Header = "This isn't a TV" };
-                notTv.Click += (_, _) => { _data.LgTvs[row.Id] = Profile.NotATv; Commit(); };
-                menu.Items.Add(notTv);
-                menu.IsOpen = true;
-            };
-            detail = pick;
-        }
-        stack.Children.Add(detail);
+            }
+            // Look for TVs while the menu builds; it's a two-second listen.
+            var searching = new MenuItem { Header = "Looking for LG TVs on the network…", IsEnabled = false };
+            menu.Items.Add(searching);
+            menu.Items.Add(MenuItem("Enter its IP address…", "", true, () => AskForIp(row, tv)));
+            menu.Items.Add(new Separator());
+            if (tv.IsPaired)
+                menu.Items.Add(MenuItem("Forget this TV", "", true, () => { tv.ClientKey = ""; tv.Ip = ""; tv.Mac = ""; Commit(); }));
+            menu.Items.Add(MenuItem("This isn't a TV", "", true, () => { tv.NotATv = true; Commit(); }));
+            menu.IsOpen = true;
+
+            var found = await LgWebOs.DiscoverAsync(TimeSpan.FromSeconds(2));
+            int at = menu.Items.IndexOf(searching);
+            if (at < 0) return; // menu closed meanwhile
+            menu.Items.Remove(searching);
+            if (found.Count == 0)
+                menu.Items.Insert(at, new MenuItem { Header = "No LG TVs answered (is it on?)", IsEnabled = false });
+            foreach (var f in found)
+                menu.Items.Insert(at++, MenuItem($"Pair with {f.Name}  ({f.Ip})", "", true, () => _ = Pair(row, tv, f.Ip, f.Name)));
+        };
+        stack.Children.Add(button);
         return stack;
     }
 
-    /// <summary>Auto on, auto off and the HDMI input for one profile. Only usable when the profile turns this display on.</summary>
-    UIElement LgCell(Profile p, Row row, string tvKey)
+    async Task Pair(Row row, LgTvLink tv, string ip, string name)
     {
-        bool usable = LgCompanion.IsInstalled && tvKey != "" && p.Displays.Contains(row.Id);
+        _pairing.Add(row.Id);
+        Rebuild();
+        var (key, error) = await LgWebOs.PairAsync(ip);
+        _pairing.Remove(row.Id);
+        if (key == null)
+        {
+            DarkDialog.Show(Window.GetWindow(this), "The TV didn't pair",
+                $"{error}.\n\nMake sure the TV is on and on the same network, then try again and accept the prompt on the TV with the remote.");
+            Rebuild();
+            return;
+        }
+        tv.Ip = ip;
+        tv.ClientKey = key;
+        if (name != "") tv.Name = name;
+        // The TV is on right now, so the network knows its MAC address: needed to wake it later.
+        tv.Mac = LgWebOs.MacOf(ip);
+        SwitchLog.Write($"Paired LG TV {tv.Name} at {ip}" + (tv.Mac != "" ? $" ({tv.Mac})" : " (MAC not found)"));
+        Commit();
+    }
+
+    void AskForIp(Row row, LgTvLink tv)
+    {
+        var ip = InputDialog.Ask(Window.GetWindow(this), "LG TV's IP address",
+            "On the TV: Settings → General → Network → Wi-Fi or Wired connection → Advanced. It looks like 192.168.1.42.",
+            tv.Ip);
+        if (ip == null) return;
+        if (!System.Net.IPAddress.TryParse(ip.Trim(), out _))
+        {
+            DarkDialog.Show(Window.GetWindow(this), "That isn't an IP address", "It should be four numbers separated by dots, like 192.168.1.42.");
+            return;
+        }
+        _ = Pair(row, tv, ip.Trim(), tv.Name);
+    }
+
+    async Task TryTv(LgTvLink tv, Func<LgTvLink, Task<string?>> action, string what)
+    {
+        var error = await action(tv);
+        if (error != null) DarkDialog.Show(Window.GetWindow(this), $"Couldn't turn the TV {what}", error);
+    }
+
+    /// <summary>Auto on, auto off and the HDMI input for one profile. Only usable when the TV is paired and the profile turns this display on.</summary>
+    UIElement LgCell(Profile p, Row row, LgTvLink tv)
+    {
+        bool usable = tv.IsPaired && p.Displays.Contains(row.Id);
         var options = p.LgTv.TryGetValue(row.Id, out var o) ? o : new LgTvOptions();
         void Set(LgTvOptions next) { p.LgTv[row.Id] = next; Commit(); }
 
         var panel = new StackPanel { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(20, 0, 8, 0),
             IsEnabled = usable,
-            ToolTip = usable ? null : !LgCompanion.IsInstalled ? "Needs LGTV Companion" : tvKey == "" ? "Pick which TV this is first" : $"Tick this display in {p.Name} first" };
+            ToolTip = usable ? null : !tv.IsPaired ? "Pair the TV first" : $"Tick this display in {p.Name} first" };
         CheckBox Switch(string label, bool value, Action<bool> set, string tip)
         {
             var sw = new CheckBox { Style = Res<Style>("Switch"), IsChecked = value, Margin = new Thickness(0, 2, 0, 2), ToolTip = tip,
@@ -990,7 +1038,7 @@ public partial class ProfilesPage : UserControl
         var hdmi = new Button { Style = Res<Style>("IconButton"), Width = double.NaN, Height = double.NaN, Padding = new Thickness(4, 1, 4, 1), FontFamily = Res<FontFamily>("UiFont"),
             HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 2, 0, 0),
             Content = new TextBlock { Text = options.HdmiInput is >= 1 and <= 4 ? $"Input: HDMI {options.HdmiInput} ▾" : "Input: unchanged ▾", FontSize = 11 },
-            ToolTip = "Switch the TV to this input when it's turned on" };
+            ToolTip = "Switch the TV to this input when switching to this profile" };
         hdmi.Click += (_, _) =>
         {
             var menu = new ContextMenu { PlacementTarget = hdmi, Placement = PlacementMode.Bottom };

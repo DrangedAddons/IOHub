@@ -59,6 +59,7 @@ public sealed class ProfileSwitcher(DeviceHub hub, ProfileService profiles)
                 if (error != null) problems.Add(error);
                 else
                 {
+                    await ReassertInputs(profile, problems);
                     problems.AddRange(await CheckRefreshRates(profile.Displays));
                     if (!profile.DisplaysConfirmed && ConfirmDisplays != null)
                     {
@@ -191,16 +192,12 @@ public sealed class ProfileSwitcher(DeviceHub hub, ProfileService profiles)
                     changed = true;
                 }
 
-        List<LgTv>? tvs = null;
-        foreach (var d in hub.Displays.Where(d => d.Manufacturer == "LG" && !profiles.Data.LgTvs.ContainsKey(d.Id)))
+        // An LG display with "TV" in its name gets an LG TV row in Profiles, to pair it. Someone with an LG TV whose
+        // name doesn't say so can still pair it from there once it's listed; LG monitors aren't offered.
+        foreach (var d in hub.Displays.Where(d => d.Manufacturer == "LG" && d.Name.Contains("TV", StringComparison.OrdinalIgnoreCase)
+                                                  && !profiles.Data.LgTvs.ContainsKey(d.Id)))
         {
-            tvs ??= LgCompanion.IsInstalled ? LgCompanion.Tvs() : [];
-            // An LG with "TV" in its name, or any LG while LGTV Companion has TVs set up. With exactly one TV there,
-            // it's that one; otherwise the Profiles page asks which.
-            if (!d.Name.Contains("TV", StringComparison.OrdinalIgnoreCase) && tvs.Count == 0) continue;
-            var used = profiles.Data.LgTvs.Values.ToHashSet();
-            var free = tvs.Where(t => !used.Contains(t.Key)).ToList();
-            profiles.Data.LgTvs[d.Id] = free.Count == 1 ? free[0].Key : "";
+            profiles.Data.LgTvs[d.Id] = new LgTvLink { Name = d.Name };
             changed = true;
         }
         if (changed) profiles.SaveQuietly();
@@ -211,7 +208,7 @@ public sealed class ProfileSwitcher(DeviceHub hub, ProfileService profiles)
         var waitFor = new List<string>();
         foreach (var id in displayIds)
         {
-            if (!profiles.Data.LgTvs.TryGetValue(id, out var tv) || tv == "" || tv == Profile.NotATv) continue;
+            if (!profiles.Data.LgTvs.TryGetValue(id, out var tv) || !tv.IsPaired || tv.NotATv) continue;
             var options = profile != null && profile.LgTv.TryGetValue(id, out var o) ? o : null;
             // A restore turns a TV back on if the old setup used it; a profile only if it's set to.
             if (profile != null && options is not { PowerOn: true }) continue;
@@ -219,14 +216,12 @@ public sealed class ProfileSwitcher(DeviceHub hub, ProfileService profiles)
             if (!detected)
             {
                 SwitchLog.Write($"  LG {NameOf(id)}: power on");
-                if (await LgCompanion.PowerOn(tv) is { } e) { problems.Add(e); continue; }
+                var waking = Stopwatch.StartNew();
+                if (await LgWebOs.PowerOnAsync(tv) is { } e) { problems.Add(e); continue; }
+                SwitchLog.Write($"  LG {NameOf(id)}: awake after {waking.ElapsedMilliseconds} ms");
                 waitFor.Add(id);
             }
-            if (options is { HdmiInput: >= 1 and <= 4 })
-            {
-                SwitchLog.Write($"  LG {NameOf(id)}: HDMI {options.HdmiInput}");
-                if (await LgCompanion.SetHdmi(tv, options.HdmiInput) is { } e) problems.Add(e);
-            }
+            if (options is { HdmiInput: >= 1 and <= 4 }) await SetInput(id, tv, options.HdmiInput, problems);
         }
 
         // Windows only sees the TV once it's on and the HDMI link is up, which can take a while.
@@ -247,9 +242,40 @@ public sealed class ProfileSwitcher(DeviceHub hub, ProfileService profiles)
         foreach (var (id, options) in previous.LgTv)
         {
             if (!options.PowerOff || keeping.Contains(id)) continue;
-            if (!profiles.Data.LgTvs.TryGetValue(id, out var tv) || tv == "" || tv == Profile.NotATv) continue;
+            if (!profiles.Data.LgTvs.TryGetValue(id, out var tv) || !tv.IsPaired || tv.NotATv) continue;
             SwitchLog.Write($"  LG {NameOf(id)}: power off");
-            if (await LgCompanion.PowerOff(tv) is { } e) problems.Add(e);
+            if (await LgWebOs.PowerOffAsync(tv) is { } e) problems.Add(e);
+        }
+    }
+
+    /// <summary>
+    /// Switches a TV's input. A TV that's just woken up often ignores the first request, so this tries a few times.
+    /// (The scripts IO Hub replaced sent the same input four times for the same reason.)
+    /// </summary>
+    async Task SetInput(string displayId, LgTvLink tv, int input, List<string> problems)
+    {
+        string? error = null;
+        for (int attempt = 1; attempt <= 4; attempt++)
+        {
+            error = await LgWebOs.SetHdmiAsync(tv, input);
+            SwitchLog.Write($"  LG {NameOf(displayId)}: HDMI {input}, attempt {attempt}" + (error != null ? $": {error}" : ""));
+            if (error == null) return;
+            await Task.Delay(1500);
+        }
+        problems.Add(error!);
+    }
+
+    /// <summary>
+    /// Sets the input again once the displays have changed: a TV can jump to whichever input the PC's signal arrived
+    /// on when Windows starts sending to it.
+    /// </summary>
+    async Task ReassertInputs(Profile profile, List<string> problems)
+    {
+        foreach (var (id, options) in profile.LgTv)
+        {
+            if (options.HdmiInput is < 1 or > 4 || !profile.Displays.Contains(id)) continue;
+            if (!profiles.Data.LgTvs.TryGetValue(id, out var tv) || !tv.IsPaired || tv.NotATv) continue;
+            await SetInput(id, tv, options.HdmiInput, problems);
         }
     }
 
