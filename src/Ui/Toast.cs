@@ -66,20 +66,22 @@ public sealed class Toast : Window
     }
 
     /// <summary>The numbered profile list shown while the picker waits for a digit.</summary>
-    public void ShowPicker(IReadOnlyList<(string Name, Color Color, bool Active)> profiles, double seconds)
+    /// <param name="labels">What to press for each profile, in order; numbers 1-9 when null.</param>
+    public void ShowPicker(IReadOnlyList<(string Name, Color Color, bool Active)> profiles, double seconds,
+        IReadOnlyList<string>? labels = null, string hint = "Press its number. Esc cancels.")
     {
         _body.Children.Clear();
         _body.Children.Add(new TextBlock { Text = "Pick a profile", FontFamily = (FontFamily)FindResource("DisplayFont"), FontSize = 15, FontWeight = FontWeights.SemiBold });
-        _body.Children.Add(new TextBlock { Text = "Press its number. Esc cancels.", Foreground = (Brush)FindResource("MutedBrush"), Margin = new Thickness(0, 2, 0, 10) });
-        for (int i = 0; i < profiles.Count && i < 9; i++)
+        _body.Children.Add(new TextBlock { Text = hint, Foreground = (Brush)FindResource("MutedBrush"), Margin = new Thickness(0, 2, 0, 10) });
+        for (int i = 0; i < profiles.Count && i < (labels?.Count ?? 9); i++)
         {
             var (name, color, active) = profiles[i];
             var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 3) };
             row.Children.Add(new Border
             {
-                Width = 24, Height = 24, CornerRadius = new CornerRadius(7), Background = new SolidColorBrush(Color.FromArgb(0x30, color.R, color.G, color.B)),
+                MinWidth = 24, Height = 24, Padding = new Thickness(5, 0, 5, 0), CornerRadius = new CornerRadius(7), Background = new SolidColorBrush(Color.FromArgb(0x30, color.R, color.G, color.B)),
                 BorderBrush = new SolidColorBrush(color), BorderThickness = new Thickness(1),
-                Child = new TextBlock { Text = (i + 1).ToString(), FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center },
+                Child = new TextBlock { Text = labels?[i] ?? (i + 1).ToString(), FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center },
             });
             row.Children.Add(new TextBlock { Text = name, FontSize = 14, Margin = new Thickness(11, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
             if (active)

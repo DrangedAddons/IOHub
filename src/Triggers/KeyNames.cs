@@ -46,6 +46,8 @@ public static class KeyNames
         TriggerKind.KeyGesture => t.Key == 0 ? "Key not set" : Gesture(t.Gesture, t.Key, t.HoldMs),
         TriggerKind.ProfilePicker => t.Key == 0 ? "Key not set" : $"{Gesture(t.Gesture, t.Key, t.HoldMs)}, then 1–9",
         TriggerKind.SteamBigPicture => "Steam Big Picture",
+        TriggerKind.ControllerCombo => t.Buttons == 0 ? "Buttons not set" : ControllerButtons.Gesture(t.Gesture, t.Buttons, t.HoldMs),
+        TriggerKind.ControllerPicker => t.Buttons == 0 ? "Buttons not set" : $"{ControllerButtons.Gesture(t.Gesture, t.Buttons, t.HoldMs)}, then A, B, X, Y or the D-pad",
         _ => "Type not chosen",
     };
 

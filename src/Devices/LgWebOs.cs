@@ -27,7 +27,8 @@ public sealed class LgTvLink
     public bool NotATv { get; set; }
     /// <summary>
     /// For Auto return: how the TV was before IO Hub switched to it. "off", or the app that was showing
-    /// ("com.webos.app.hdmi1" for HDMI 1). Empty when there's nothing to return to. Saved, in case IO Hub restarts.
+    /// ("com.webos.app.hdmi1" for HDMI 1). "off|com.webos.app.hdmi1": it was off, and woke up on HDMI 1. Empty when
+    /// there's nothing to return to. Saved, in case IO Hub restarts.
     /// </summary>
     public string ReturnTo { get; set; } = "";
 
@@ -261,13 +262,26 @@ public static class LgWebOs
 
     /// <summary>
     /// Puts the TV back the way <see cref="LgTvLink.ReturnTo"/> says: off, an HDMI input, or the app that was showing.
+    /// "off|app" means it was off on that input: switch back to it first, so the remote turns it on there next time.
     /// </summary>
-    public static Task<string?> ReturnAsync(LgTvLink tv, string returnTo)
+    public static async Task<string?> ReturnAsync(LgTvLink tv, string returnTo)
     {
-        if (returnTo == "off") return PowerOffAsync(tv);
-        var hdmi = Regex.Match(returnTo, @"^com\.webos\.app\.hdmi(\d)$", RegexOptions.IgnoreCase);
+        if (returnTo == "off") return await PowerOffAsync(tv);
+        if (returnTo.StartsWith("off|"))
+        {
+            var input = await ShowAsync(tv, returnTo[4..]);
+            await Task.Delay(1500); // let the TV settle on that input before it's turned off, or it may not keep it
+            return await PowerOffAsync(tv) ?? input;
+        }
+        return await ShowAsync(tv, returnTo);
+    }
+
+    /// <summary>Switches to an HDMI input, or launches the app, by its webOS app id.</summary>
+    static Task<string?> ShowAsync(LgTvLink tv, string appId)
+    {
+        var hdmi = Regex.Match(appId, @"^com\.webos\.app\.hdmi(\d)$", RegexOptions.IgnoreCase);
         if (hdmi.Success) return SetHdmiAsync(tv, int.Parse(hdmi.Groups[1].Value));
-        return SendAsync(tv, "ssap://system.launcher/launch", new JsonObject { ["id"] = returnTo }, waitForReply: true);
+        return SendAsync(tv, "ssap://system.launcher/launch", new JsonObject { ["id"] = appId }, waitForReply: true);
     }
 
     /// <summary>Connects, logs in with the saved key, sends one request. Returns an error message, or null.</summary>

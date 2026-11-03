@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.0
+- **Xbox controller triggers.** New trigger types under *Xbox controller*:
+  - *Controller buttons*: press, double tap, triple tap or hold a button combination (like View + Menu) to switch
+    to a profile, or to switch back with *Do it again to switch back*.
+  - *Controller picker*: a button combination opens the profile list, then A, B, X, Y or a D-pad direction picks
+    the profile (profile 1 is A, 2 is B, and so on, up to eight). View cancels.
+
+  Click the buttons box, hold the buttons together on the controller, then let go. A combination needs two buttons
+  or more, and only counts when exactly those buttons are held, so it won't go off mid-game while you're holding
+  something else. LT and RT count as buttons; so does the Xbox button, in a combination. Controllers are only read
+  while a controller trigger is on.
+- **Auto return leaves the input as it was.** If the TV was off when IO Hub turned it on, IO Hub notes the input it
+  woke up on (say HDMI 1 for the Apple TV). Leaving, it switches back to that input, then turns the TV off, so the
+  remote turns it on there next time.
+
 ## 0.3.0
 - **LG TVs turn on reliably.** IO Hub used to skip the wake-up whenever the TV answered on the network, and a TV with
   Quick Start+ answers while it's off, so nothing was sent. It now asks the TV whether it's on. If it's in standby it

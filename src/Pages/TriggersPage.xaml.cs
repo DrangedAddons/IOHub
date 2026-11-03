@@ -25,7 +25,8 @@ public partial class TriggersPage : UserControl
     // Rows start collapsed to a one-line summary; these are the ones opened for editing.
     readonly HashSet<string> _expanded = [];
 
-    sealed record Recording(Trigger Trigger, bool Combo, Button Button);
+    /// <param name="Timer">Set when recording controller buttons: it reads the controllers.</param>
+    sealed record Recording(Trigger Trigger, bool Combo, Button Button, System.Windows.Threading.DispatcherTimer? Timer = null);
 
     List<Trigger> AllTriggers => _profiles.Data.Triggers;
 
@@ -98,11 +99,21 @@ public partial class TriggersPage : UserControl
         TriggerKind.Hotkey => ("Hotkey", "", "A key combination, like Ctrl + Alt + T"),
         TriggerKind.KeyGesture => ("Key gesture", "", "Double tap, triple tap or hold one key"),
         TriggerKind.ProfilePicker => ("Profile picker", "", "A gesture, then 1–9 to pick the profile"),
+        TriggerKind.ControllerCombo => ("Controller buttons", "\uE7FC", "Press, tap or hold buttons together, like View + Menu"),
+        TriggerKind.ControllerPicker => ("Controller picker", "\uE7FC", "Buttons together, then A, B, X, Y or the D-pad to pick the profile"),
         TriggerKind.SteamBigPicture => ("Steam Big Picture", "", "Switch while Big Picture is open"),
         _ => ("New trigger", "", "Choose what sets it off"),
     };
 
-    static readonly TriggerKind[] Kinds = [TriggerKind.Hotkey, TriggerKind.KeyGesture, TriggerKind.ProfilePicker, TriggerKind.SteamBigPicture];
+    static readonly TriggerKind[] Kinds = [TriggerKind.Hotkey, TriggerKind.KeyGesture, TriggerKind.ProfilePicker,
+        TriggerKind.ControllerCombo, TriggerKind.ControllerPicker, TriggerKind.SteamBigPicture];
+
+    static string CategoryName(TriggerCategory c) => c switch
+    {
+        TriggerCategory.Integrations => "Integration",
+        TriggerCategory.Controller => "Controller",
+        _ => "Keys",
+    };
 
     /// <summary>
     /// Icon, type, one-line summary, on/off and the menu. Rows also show the status here, and a chevron when
@@ -131,7 +142,7 @@ public partial class TriggersPage : UserControl
             titleRow.Children.Add(new Border
             {
                 Style = Res<Style>("Badge"), Margin = new Thickness(10, 1, 0, 0),
-                Child = new TextBlock { Text = Trigger.CategoryOf(t.Kind) == TriggerCategory.Integrations ? "Integration" : "Keys" },
+                Child = new TextBlock { Text = CategoryName(Trigger.CategoryOf(t.Kind)) },
             });
         titles.Children.Add(titleRow);
         titles.Children.Add(new TextBlock { Text = Summary(t), Style = Res<Style>("Muted"), Margin = new Thickness(0, 3, 0, 0) });
@@ -265,13 +276,14 @@ public partial class TriggersPage : UserControl
         return slot;
     }
 
-    /// <summary>Shown on a new trigger: pick what kind it is, grouped into Keys and Integrations.</summary>
+    /// <summary>Shown on a new trigger: pick what kind it is, grouped into Keys, Controller and Integrations.</summary>
     UIElement TypePicker(Trigger t)
     {
         var panel = new StackPanel();
-        foreach (var category in new[] { TriggerCategory.Keys, TriggerCategory.Integrations })
+        foreach (var category in new[] { TriggerCategory.Keys, TriggerCategory.Controller, TriggerCategory.Integrations })
         {
-            panel.Children.Add(Label(category == TriggerCategory.Keys ? "KEYS" : "INTEGRATIONS", top: category == TriggerCategory.Keys ? 0 : 14));
+            panel.Children.Add(Label(category switch { TriggerCategory.Keys => "KEYS", TriggerCategory.Controller => "XBOX CONTROLLER", _ => "INTEGRATIONS" },
+                top: category == TriggerCategory.Keys ? 0 : 14));
             var wrap = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
             foreach (var kind in Kinds.Where(k => Trigger.CategoryOf(k) == category)) wrap.Children.Add(TypeTile(t, kind));
             if (category == TriggerCategory.Integrations)
@@ -306,6 +318,9 @@ public partial class TriggersPage : UserControl
             t.Kind = kind;
             // Big Picture is a "while it's open" trigger, so going back afterwards is the expected default.
             t.SwitchBack = kind == TriggerKind.SteamBigPicture;
+            // Holding is the hardest to set off by accident mid-game.
+            if (kind is TriggerKind.ControllerCombo or TriggerKind.ControllerPicker) { t.Gesture = GestureKind.Hold; t.HoldMs = 800; }
+            else if (t.Gesture == GestureKind.Press) t.Gesture = GestureKind.DoubleTap;
             Save();
         };
         return button;
@@ -317,7 +332,7 @@ public partial class TriggersPage : UserControl
         return t.Kind switch
         {
             TriggerKind.Unset => "Choose what sets it off",
-            TriggerKind.ProfilePicker => KeyNames.Describe(t),
+            TriggerKind.ProfilePicker or TriggerKind.ControllerPicker => KeyNames.Describe(t),
             TriggerKind.SteamBigPicture => target == null ? "Not linked to a profile"
                 : $"Switches to {target.Name} while it's open" + (t.SwitchBack ? ", then reverts" : ""),
             _ => target == null ? KeyNames.Describe(t)
@@ -331,13 +346,14 @@ public partial class TriggersPage : UserControl
         if (t.Kind != TriggerKind.Unset)
         {
             var test = MenuItem("Try it now", "", () => _ = _engine.Test(t));
-            test.IsEnabled = t.Kind == TriggerKind.ProfilePicker ? _profiles.Profiles.Count > 0 : t.ProfileId != null;
+            test.IsEnabled = t.IsPicker ? _profiles.Profiles.Count > 0 : t.ProfileId != null;
             menu.Items.Add(test);
             menu.Items.Add(MenuItem("Change type", "", () =>
             {
                 t.Kind = TriggerKind.Unset;
                 t.Key = 0;
                 t.Mods = KeyMods.None;
+                t.Buttons = 0;
                 Save();
             }));
             menu.Items.Add(new Separator());
@@ -372,6 +388,21 @@ public partial class TriggersPage : UserControl
                     panel.Children.Add(Note("then press 1–9 within a couple of seconds to pick the profile with that number."));
                 break;
 
+            case TriggerKind.ControllerCombo:
+            case TriggerKind.ControllerPicker:
+                var padRow = new WrapPanel();
+                padRow.Children.Add(GestureChoice(t, controller: true));
+                var buttons = ButtonsButton(t);
+                buttons.Margin = new Thickness(10, 0, 0, 0);
+                padRow.Children.Add(buttons);
+                panel.Children.Add(padRow);
+                if (t.Gesture == GestureKind.Hold) panel.Children.Add(HoldChoice(t));
+                panel.Children.Add(Note(t.Kind == TriggerKind.ControllerPicker
+                    ? "then press A, B, X, Y or a D-pad direction within a few seconds to pick the profile with that button."
+                    : "Only counts when exactly these buttons are held, so it won't go off mid-game while you're holding something else."));
+                if (_engine.ControllersConnected == 0) panel.Children.Add(Note("No Xbox controller is connected right now."));
+                break;
+
             case TriggerKind.SteamBigPicture:
                 var line = new StackPanel { Orientation = Orientation.Horizontal };
                 line.Children.Add(new TextBlock { Text = "Steam Big Picture opens", FontSize = 13.5, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
@@ -383,7 +414,7 @@ public partial class TriggersPage : UserControl
         return panel;
     }
 
-    UIElement GestureChoice(Trigger t)
+    UIElement GestureChoice(Trigger t, bool controller = false)
     {
         var box = new Border
         {
@@ -391,7 +422,9 @@ public partial class TriggersPage : UserControl
             CornerRadius = new CornerRadius(10), Padding = new Thickness(3),
         };
         var row = new StackPanel { Orientation = Orientation.Horizontal };
-        foreach (var (g, label) in new[] { (GestureKind.DoubleTap, "Double tap"), (GestureKind.TripleTap, "Triple tap"), (GestureKind.Hold, "Hold") })
+        var choices = new List<(GestureKind, string)> { (GestureKind.DoubleTap, "Double tap"), (GestureKind.TripleTap, "Triple tap"), (GestureKind.Hold, "Hold") };
+        if (controller) choices.Insert(0, (GestureKind.Press, "Press"));
+        foreach (var (g, label) in choices)
         {
             var rb = new RadioButton
             {
@@ -479,14 +512,85 @@ public partial class TriggersPage : UserControl
     {
         if (_recording == null) return;
         _recording.Button.LostKeyboardFocus -= OnRecorderLostFocus;
+        _recording.Timer?.Stop();
         _recording = null;
         _engine.Suspended = false;
         Rebuild();
     }
 
+    // ---------------- recording controller buttons ----------------
+
+    Button ButtonsButton(Trigger t)
+    {
+        var button = new Button { Style = Res<Style>("GhostButton"), Padding = new Thickness(10, 6, 12, 6), HorizontalAlignment = HorizontalAlignment.Left };
+        button.Content = t.Buttons == 0 ? KeyPrompt("Click, then hold the buttons") : KeyChips(ControllerButtons.Combo(t.Buttons));
+        button.ToolTip = "Click to change";
+        button.Click += (_, _) => StartPadRecording(t, button);
+        return button;
+    }
+
+    /// <summary>
+    /// Records a button combination: everything held at once, taken when they're all let go. The controllers are
+    /// read here directly (the engine's reader is paused while recording, so the old combination doesn't fire).
+    /// </summary>
+    void StartPadRecording(Trigger t, Button button)
+    {
+        StopRecording();
+        var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(30) };
+        _recording = new Recording(t, false, button, timer);
+        _engine.Suspended = true;
+        button.BorderBrush = Res<Brush>("AccentBrush");
+        button.Focus(); // so Esc reaches the page
+        button.LostKeyboardFocus += OnRecorderLostFocus;
+
+        var slots = XInputPad.Connected();
+        int seen = 0;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var lastScan = 0L;
+        void Prompt(string text) => button.Content = KeyPrompt(text);
+        Prompt(slots.Count == 0 ? "Connect an Xbox controller… (Esc cancels)" : "Hold the buttons together, then let go… (Esc cancels)");
+        timer.Tick += (_, _) =>
+        {
+            if (clock.Elapsed > TimeSpan.FromSeconds(20)) { StopRecording(); return; }
+            if (slots.Count == 0 && clock.ElapsedMilliseconds - lastScan > 1000)
+            {
+                lastScan = clock.ElapsedMilliseconds;
+                slots = XInputPad.Connected();
+                if (slots.Count > 0) Prompt("Hold the buttons together, then let go… (Esc cancels)");
+            }
+            int held = 0;
+            foreach (var slot in slots) if (XInputPad.TryRead(slot, out var b)) held |= b;
+            if (held != 0)
+            {
+                if ((held | seen) != seen) button.Content = KeyChips(ControllerButtons.Combo(held | seen) + " + …");
+                seen |= held;
+                return;
+            }
+            if (seen == 0) return;
+            if (ControllerButtons.Count(seen) < 2)
+            {
+                // One button on its own gets pressed (and double-tapped, and held) all the time in games.
+                seen = 0;
+                Prompt("Use two or more buttons together, like View + Menu");
+                return;
+            }
+            t.Buttons = seen;
+            StopRecording();
+            Save();
+        };
+        timer.Start();
+    }
+
     void Page_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (_recording is not { } rec) return;
+        if (rec.Timer != null)
+        {
+            // Recording a controller: only Esc means anything here.
+            e.Handled = true;
+            if (e.Key == Key.Escape) StopRecording();
+            return;
+        }
         e.Handled = true; // keep Space/Enter from clicking the button
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
         if (key is Key.ImeProcessed or Key.DeadCharProcessed or Key.None) return;
@@ -543,26 +647,28 @@ public partial class TriggersPage : UserControl
     UIElement ThenEditor(Trigger t)
     {
         var panel = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
-        if (t.Kind == TriggerKind.ProfilePicker)
+        if (t.IsPicker)
         {
             if (_profiles.Profiles.Count == 0) { panel.Children.Add(Note("Make a profile first.")); return panel; }
+            bool pad = t.Kind == TriggerKind.ControllerPicker;
+            var picks = ControllerButtons.PickerButtons;
             var chips = new WrapPanel();
-            for (int i = 0; i < _profiles.Profiles.Count && i < 9; i++)
+            for (int i = 0; i < _profiles.Profiles.Count && i < (pad ? picks.Length : 9); i++)
             {
                 var p = _profiles.Profiles[i];
                 var color = (Color)ColorConverter.ConvertFromString(p.Color);
                 var chip = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 14, 6) };
                 chip.Children.Add(new Border
                 {
-                    Width = 22, Height = 22, CornerRadius = new CornerRadius(6), Background = new SolidColorBrush(Color.FromArgb(0x30, color.R, color.G, color.B)),
+                    MinWidth = 22, Height = 22, Padding = new Thickness(4, 0, 4, 0), CornerRadius = new CornerRadius(6), Background = new SolidColorBrush(Color.FromArgb(0x30, color.R, color.G, color.B)),
                     BorderBrush = new SolidColorBrush(color), BorderThickness = new Thickness(1),
-                    Child = new TextBlock { Text = (i + 1).ToString(), FontWeight = FontWeights.SemiBold, FontSize = 12, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center },
+                    Child = new TextBlock { Text = pad ? ControllerButtons.ShortName(picks[i]) : (i + 1).ToString(), FontWeight = FontWeights.SemiBold, FontSize = 12, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center },
                 });
                 chip.Children.Add(new TextBlock { Text = p.Name, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
                 chips.Children.Add(chip);
             }
             panel.Children.Add(chips);
-            panel.Children.Add(Note("Numbers follow the column order on the Profiles page."));
+            panel.Children.Add(Note(pad ? "Buttons follow the column order on the Profiles page." : "Numbers follow the column order on the Profiles page."));
             return panel;
         }
 
@@ -610,7 +716,7 @@ public partial class TriggersPage : UserControl
 
     FrameworkElement? Options(Trigger t, bool compact)
     {
-        if (t.Kind is TriggerKind.ProfilePicker or TriggerKind.Unset) return null;
+        if (t.IsPicker || t.Kind == TriggerKind.Unset) return null;
         var panel = new StackPanel { Margin = new Thickness(0, compact ? 8 : 0, 0, 0) };
         if (t.Kind == TriggerKind.SteamBigPicture)
         {
@@ -624,7 +730,8 @@ public partial class TriggersPage : UserControl
         }
         else
         {
-            panel.Children.Add(Option("Press again to switch back", "The same keys put the previous setup back, so one trigger works as a toggle.",
+            panel.Children.Add(Option(t.UsesController ? "Do it again to switch back" : "Press again to switch back",
+                $"The same {(t.UsesController ? "buttons" : "keys")} put the previous setup back, so one trigger works as a toggle.",
                 t.SwitchBack, v => t.SwitchBack = v, compact));
         }
         return panel;
@@ -659,13 +766,15 @@ public partial class TriggersPage : UserControl
         string text;
         if (t.Kind == TriggerKind.Unset) text = "Choose a type to finish setting this up";
         else if (!t.Enabled) text = "Off";
-        else if (t.UsesKeyboard && t.Key == 0) text = "Set a key to turn this on";
-        else if (t.Kind != TriggerKind.ProfilePicker && t.ProfileId == null) text = "Pick a profile to turn this on";
+        else if (!t.HasInput) text = t.UsesController ? "Set the buttons to turn this on" : "Set a key to turn this on";
+        else if (!t.IsPicker && t.ProfileId == null) text = "Pick a profile to turn this on";
         else if (_engine.IsEngaged(t)) text = t.HasEnd ? "Switched. Reverts when Big Picture closes." : "Switched. Fire it again to go back.";
         else if (_engine.LastFired(t) is { } at) text = $"Last fired at {at:T}";
+        else if (t.UsesController && _engine.ControllersConnected == 0) text = "Ready, once a controller connects";
         else text = t.Kind == TriggerKind.SteamBigPicture ? "Watching for Big Picture" : "Ready";
 
         bool live = t.Enabled && !_engine.Paused && (text is "Ready" or "Watching for Big Picture" || text.StartsWith("Last"));
+        if (text.StartsWith("Ready, once")) live = false;
         var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         row.Children.Add(new Ellipse
         {

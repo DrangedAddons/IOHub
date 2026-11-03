@@ -241,6 +241,8 @@ public sealed class ProfileSwitcher(DeviceHub hub, ProfileService profiles)
                 Log("power on" + (detected ? " (Windows still lists it)" : ""));
                 if (await LgWebOs.PowerOnAsync(tv, Log) is { } e) { problems.Add(e); continue; }
                 if (!detected) waitFor.Add(id);
+                // It was off: note the input it woke up on too, so Auto return can leave it there when turning it off.
+                if (options is { Leaving: LgLeave.AutoReturn } && tv.ReturnTo == "off") await NoteWokenInput(tv, options, Log);
             }
             if (options is { HdmiInput: >= 1 and <= 4 }) await SetInput(id, tv, options.HdmiInput, problems);
         }
@@ -273,6 +275,28 @@ public sealed class ProfileSwitcher(DeviceHub hub, ProfileService profiles)
         }
         tv.ReturnTo = returnTo;
         log($"was {state.Power} ({state.State ?? "no answer"}), showing {state.AppId ?? "nothing"}; will return to \"{(returnTo == "" ? "nothing" : returnTo)}\"");
+    }
+
+    /// <summary>
+    /// A TV that was off comes on at the input it was last on. Waits a moment for it to say which (it's blank while
+    /// starting), and notes it unless it's already this profile's input.
+    /// </summary>
+    async Task NoteWokenInput(LgTvLink tv, LgTvOptions options, Action<string> log)
+    {
+        string? app = null;
+        for (int i = 0; i < 6 && app == null; i++)
+        {
+            if (i > 0) await Task.Delay(500);
+            app = (await LgWebOs.GetStateAsync(tv)).AppId;
+        }
+        if (app == null) { log("woke up without saying which input it's on; will just turn it off"); return; }
+        if (options.HdmiInput is >= 1 and <= 4 && app.Equals($"com.webos.app.hdmi{options.HdmiInput}", StringComparison.OrdinalIgnoreCase))
+        {
+            log($"woke up on HDMI {options.HdmiInput} already; will just turn it off");
+            return;
+        }
+        tv.ReturnTo = "off|" + app;
+        log($"woke up on {app}; will switch back to it, then turn it off");
     }
 
     /// <summary>TVs the previous profile used and the next one doesn't: left, turned off, or returned to how they were.</summary>

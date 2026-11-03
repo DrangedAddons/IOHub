@@ -301,8 +301,10 @@ public partial class OverviewPage : UserControl
         var list = new List<string>();
         foreach (var t in _profiles.Data.Triggers.Where(t => t.Enabled))
         {
-            if (t.Kind == IOHub.Triggers.TriggerKind.ProfilePicker && t.Key != 0 && index < 9) list.Add($"Picker {index + 1}");
-            else if (t.ProfileId == p.Id && (!t.UsesKeyboard || t.Key != 0)) list.Add(IOHub.Triggers.KeyNames.Describe(t));
+            if (t.Kind == IOHub.Triggers.TriggerKind.ProfilePicker && t.HasInput && index < 9) list.Add($"Picker {index + 1}");
+            else if (t.Kind == IOHub.Triggers.TriggerKind.ControllerPicker && t.HasInput && index < IOHub.Triggers.ControllerButtons.PickerButtons.Length)
+                list.Add($"Picker {IOHub.Triggers.ControllerButtons.Name(IOHub.Triggers.ControllerButtons.PickerButtons[index])}");
+            else if (!t.IsPicker && t.ProfileId == p.Id && t.HasInput) list.Add(IOHub.Triggers.KeyNames.Describe(t));
         }
         return list;
     }

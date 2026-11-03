@@ -701,7 +701,7 @@ public partial class ProfilesPage : UserControl
         ToggleButton action;
         if (section == Section.Triggers)
         {
-            var mine = _data.Triggers.Where(t => t.Kind != TriggerKind.ProfilePicker && t.ProfileId == p.Id).ToList();
+            var mine = _data.Triggers.Where(t => !t.IsPicker && t.ProfileId == p.Id).ToList();
             state = mine.Count switch { 0 => "None", 1 => "1 trigger", _ => $"{mine.Count} triggers" };
             action = new ToggleButton
             {
@@ -903,6 +903,18 @@ public partial class ProfilesPage : UserControl
                 Text = n <= 9 ? n.ToString() : "—", FontWeight = FontWeights.SemiBold, Foreground = brush,
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
                 ToolTip = n <= 9 ? $"Press {n} in the profile picker for {p.Name}" : "The picker only reaches the first nine profiles",
+            };
+        }
+        if (t.Kind == TriggerKind.ControllerPicker)
+        {
+            int i = _data.Profiles.IndexOf(p);
+            var picks = ControllerButtons.PickerButtons;
+            return new TextBlock
+            {
+                Text = i < picks.Length ? ControllerButtons.Name(picks[i]) : "—", FontWeight = FontWeights.SemiBold, Foreground = brush,
+                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+                ToolTip = i < picks.Length ? $"Press {ControllerButtons.Name(picks[i])} in the controller's profile picker for {p.Name}"
+                                           : $"The controller's picker only reaches the first {picks.Length} profiles",
             };
         }
         bool selected = t.ProfileId == p.Id;

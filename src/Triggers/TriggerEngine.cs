@@ -7,12 +7,13 @@ using IOHub.Ui;
 namespace IOHub.Triggers;
 
 /// <summary>
-/// Runs the triggers: the keyboard hook and gesture detector for key triggers, the Big Picture watcher, and what
-/// happens when one fires. The hook and watcher only run while a trigger needs them. UI thread only.
+/// Runs the triggers: the keyboard hook and gesture detector for key triggers, the controller reader and its gesture
+/// detector for controller triggers, the Big Picture watcher, and what happens when one fires. Each of those only
+/// runs while a trigger needs it. UI thread only.
 /// </summary>
 public sealed class TriggerEngine : IDisposable
 {
-    const int PickerWindowMs = 2500;
+    const int PickerWindowMs = 2500, ControllerPickerWindowMs = 4000;
 
     readonly ProfileService _profiles;
     readonly ProfileSwitcher _switcher;
@@ -21,6 +22,8 @@ public sealed class TriggerEngine : IDisposable
     readonly Func<Profile?> _activeProfile;
     readonly KeyGestureDetector _detector = new();
     readonly KeyboardHook _hook;
+    readonly ControllerGestures _pad = new();
+    readonly ControllerWatcher _controllers;
     readonly BigPictureWatcher _bigPicture;
     readonly DispatcherTimer _tick;
     readonly Stopwatch _clock = Stopwatch.StartNew();
@@ -36,6 +39,7 @@ public sealed class TriggerEngine : IDisposable
     static readonly TimeSpan LoopWindow = TimeSpan.FromMinutes(2);
 
     long _pickerUntil = -1;
+    bool _pickerByController; // the open picker answers to controller buttons (and shows them)
     readonly HashSet<int> _pickerSwallowed = [];
     bool _paused, _suspended;
 
@@ -51,6 +55,10 @@ public sealed class TriggerEngine : IDisposable
         _activeProfile = activeProfile;
         _hook = new KeyboardHook(OnKey);
         _detector.Fired += tag => OnGesture((Trigger)tag);
+        _pad.Fired += tag => OnGesture((Trigger)tag);
+        _controllers = new ControllerWatcher(ui);
+        _controllers.Read += OnController;
+        _controllers.Polled += () => _pad.Tick(_clock.ElapsedMilliseconds);
         _bigPicture = new BigPictureWatcher(ui);
         _bigPicture.Changed += OnBigPicture;
         _tick = new DispatcherTimer(DispatcherPriority.Input, ui) { Interval = TimeSpan.FromMilliseconds(25) };
@@ -60,6 +68,8 @@ public sealed class TriggerEngine : IDisposable
     }
 
     public bool BigPictureOpen => _bigPicture.IsOpen;
+    /// <summary>Controllers connected, as far as the controller reader knows; null while it isn't running.</summary>
+    public int? ControllersConnected => _controllers.IsRunning ? _controllers.ConnectedCount : null;
     public bool IsEngaged(Trigger t) => _engaged.ContainsKey(t.Id);
     public DateTime? LastFired(Trigger t) => _lastFired.TryGetValue(t.Id, out var at) ? at : null;
 
@@ -74,7 +84,7 @@ public sealed class TriggerEngine : IDisposable
     public bool Suspended
     {
         get => _suspended;
-        set { _suspended = value; _detector.Reset(); }
+        set { _suspended = value; _detector.Reset(); _pad.Reset(); }
     }
 
     /// <summary>Re-reads the triggers and starts or stops the hook and watcher to match.</summary>
@@ -86,6 +96,12 @@ public sealed class TriggerEngine : IDisposable
         _detector.SetEntries(keyed.Select(t => new KeyGestureDetector.Entry(t.Kind, t.Key, t.Mods, t.Gesture, t.HoldMs, t)));
         if (keyed.Count > 0) { _hook.Install(); _tick.Start(); }
         else { _hook.Uninstall(); _tick.Stop(); _detector.Reset(); }
+
+        // Controller combinations need two buttons or more; the Triggers page won't record fewer.
+        var padded = active.Where(t => t.UsesController && ControllerButtons.Count(t.Buttons) >= 2).ToList();
+        _pad.SetEntries(padded.Select(t => new ControllerGestures.Entry(t.Buttons, t.Gesture, t.HoldMs, t)));
+        if (padded.Count > 0) _controllers.Start();
+        else { _controllers.Stop(); _pad.Reset(); }
 
         if (active.Any(t => t.Kind == TriggerKind.SteamBigPicture)) _bigPicture.Start();
         else _bigPicture.Stop();
@@ -124,6 +140,31 @@ public sealed class TriggerEngine : IDisposable
         return _detector.OnKey(vk, down, now);
     }
 
+    // ---------------- controllers ----------------
+
+    void OnController(int slot, int buttons)
+    {
+        long now = _clock.ElapsedMilliseconds;
+        if (buttons < 0) { _pad.Disconnected(slot, now); return; }
+        if (_suspended) return;
+
+        // Only a picker that was already open takes an answer: the buttons that opened it don't count as one.
+        bool pickerWasOpen = _pickerUntil >= 0 && _pickerByController;
+        int pressed = _pad.OnButtons(slot, buttons, now);
+        if (!pickerWasOpen || pressed == 0) return;
+        if (now > _pickerUntil) { ClosePicker(); return; }
+        if ((pressed & ControllerButtons.View) != 0) { ClosePicker(); return; } // View cancels
+        var picks = ControllerButtons.PickerButtons;
+        for (int i = 0; i < picks.Length; i++)
+        {
+            if ((pressed & picks[i]) == 0) continue;
+            ClosePicker();
+            int n = i + 1;
+            Dispatch(() => _ = PickNumber(n));
+            return;
+        }
+    }
+
     static int? Digit(int vk) => vk switch
     {
         >= 0x31 and <= 0x39 => vk - 0x30,
@@ -142,21 +183,33 @@ public sealed class TriggerEngine : IDisposable
 
     void OnGesture(Trigger t)
     {
-        if (t.Kind == TriggerKind.ProfilePicker)
+        if (t.IsPicker)
         {
-            _pickerUntil = _clock.ElapsedMilliseconds + PickerWindowMs;
-            Dispatch(ShowPicker);
+            OpenPicker(byController: t.Kind == TriggerKind.ControllerPicker);
             return;
         }
         Dispatch(() => _ = Fire(t, starting: true));
     }
 
+    void OpenPicker(bool byController)
+    {
+        _pickerByController = byController;
+        // A controller is slower to answer with than a number key.
+        _pickerUntil = _clock.ElapsedMilliseconds + (byController ? ControllerPickerWindowMs : PickerWindowMs);
+        Dispatch(ShowPicker);
+    }
+
     void ShowPicker()
     {
         var active = _activeProfile();
-        _toast.ShowPicker(_profiles.Profiles
+        var profiles = _profiles.Profiles
             .Select(p => (p.Name, (Color)ColorConverter.ConvertFromString(p.Color), p == active))
-            .ToList(), PickerWindowMs / 1000.0);
+            .ToList();
+        if (_pickerByController)
+            _toast.ShowPicker(profiles, ControllerPickerWindowMs / 1000.0, ControllerButtons.PickerButtons.Select(ControllerButtons.ShortName).ToList(),
+                "Press its button. View cancels.");
+        else
+            _toast.ShowPicker(profiles, PickerWindowMs / 1000.0);
     }
 
     async Task PickNumber(int n)
@@ -251,15 +304,15 @@ public sealed class TriggerEngine : IDisposable
     /// <summary>Fires a trigger by hand from the Triggers page ("Test").</summary>
     public Task Test(Trigger t)
     {
-        if (t.Kind != TriggerKind.ProfilePicker) return Fire(t, starting: true);
-        _pickerUntil = _clock.ElapsedMilliseconds + PickerWindowMs;
-        ShowPicker();
+        if (!t.IsPicker) return Fire(t, starting: true);
+        OpenPicker(byController: t.Kind == TriggerKind.ControllerPicker);
         return Task.CompletedTask;
     }
 
     public void Dispose()
     {
         _hook.Dispose();
+        _controllers.Dispose();
         _bigPicture.Dispose();
         _tick.Stop();
     }

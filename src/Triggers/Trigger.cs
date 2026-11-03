@@ -11,13 +11,24 @@ public enum TriggerKind
     ProfilePicker = 2,
     /// <summary>Steam Big Picture opening (and closing). An integration.</summary>
     SteamBigPicture = 3,
+    /// <summary>A press, double tap, triple tap or hold of a button combination on an Xbox controller.</summary>
+    ControllerCombo = 4,
+    /// <summary>A controller combination that opens the profile list; the next button (A, B, X, Y, D-pad) picks.</summary>
+    ControllerPicker = 5,
     /// <summary>Just created; the type hasn't been picked yet. Never fires.</summary>
     Unset = 99,
 }
 
-public enum TriggerCategory { Keys, Integrations }
+public enum TriggerCategory { Keys, Controller, Integrations }
 
-public enum GestureKind { DoubleTap, TripleTap, Hold }
+public enum GestureKind
+{
+    DoubleTap = 0,
+    TripleTap = 1,
+    Hold = 2,
+    /// <summary>One press. Controller combinations only: a keyboard combo is a Hotkey.</summary>
+    Press = 3,
+}
 
 [Flags]
 public enum KeyMods { None = 0, Ctrl = 1, Alt = 2, Shift = 4, Win = 8 }
@@ -37,6 +48,9 @@ public sealed class Trigger
     public GestureKind Gesture { get; set; } = GestureKind.DoubleTap;
     public int HoldMs { get; set; } = 800;
 
+    /// <summary>Controller triggers: the buttons held together, as <see cref="ControllerButtons"/> flags.</summary>
+    public int Buttons { get; set; }
+
     /// <summary>
     /// Key triggers: firing again while switched puts the previous setup back (a toggle).
     /// Big Picture: closing it puts the previous setup back.
@@ -50,7 +64,18 @@ public sealed class Trigger
     public bool HasEnd => Kind == TriggerKind.SteamBigPicture;
 
     public bool UsesKeyboard => Kind is TriggerKind.Hotkey or TriggerKind.KeyGesture or TriggerKind.ProfilePicker;
+    public bool UsesController => Kind is TriggerKind.ControllerCombo or TriggerKind.ControllerPicker;
 
-    public static TriggerCategory CategoryOf(TriggerKind kind) =>
-        kind == TriggerKind.SteamBigPicture ? TriggerCategory.Integrations : TriggerCategory.Keys;
+    /// <summary>Opens the numbered profile list instead of switching to one profile.</summary>
+    public bool IsPicker => Kind is TriggerKind.ProfilePicker or TriggerKind.ControllerPicker;
+
+    /// <summary>Its key or buttons have been set (always true for kinds that don't need any).</summary>
+    public bool HasInput => UsesKeyboard ? Key != 0 : !UsesController || Buttons != 0;
+
+    public static TriggerCategory CategoryOf(TriggerKind kind) => kind switch
+    {
+        TriggerKind.SteamBigPicture => TriggerCategory.Integrations,
+        TriggerKind.ControllerCombo or TriggerKind.ControllerPicker => TriggerCategory.Controller,
+        _ => TriggerCategory.Keys,
+    };
 }
