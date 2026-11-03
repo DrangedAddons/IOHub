@@ -211,7 +211,9 @@ public sealed class WireLayer : FrameworkElement
 {
     sealed record Drawn(Wire Wire, Geometry Curve, Pen Core, Point C1, Point C2, double Length);
 
-    List<Drawn> _wires = [];
+    // Split once per layout so a frame does no filtering or grouping (and allocates nothing of its own).
+    Drawn[] _idle = [], _active = [];
+    (Point At, bool Active)[] _hostPorts = [];
     bool _animating;
     readonly DateTime _start = DateTime.Now;
 
@@ -242,7 +244,10 @@ public sealed class WireLayer : FrameworkElement
 
     public void SetWires(List<Wire> wires)
     {
-        _wires = wires.Select(Prepare).ToList();
+        var drawn = wires.Select(Prepare).ToList();
+        _idle = drawn.Where(d => !d.Wire.Active).ToArray();
+        _active = drawn.Where(d => d.Wire.Active).ToArray();
+        _hostPorts = drawn.GroupBy(d => d.Wire.From).Select(g => (g.Key, g.Any(d => d.Wire.Active))).ToArray();
         UpdateAnimation();
         InvalidateVisual();
     }
@@ -279,7 +284,7 @@ public sealed class WireLayer : FrameworkElement
 
     void UpdateAnimation()
     {
-        bool want = IsVisible && IsLoaded && _wires.Any(d => d.Wire.Active);
+        bool want = IsVisible && IsLoaded && _active.Length > 0;
         if (want && !_animating) { CompositionTarget.Rendering += OnFrame; _animating = true; }
         else if (!want) StopAnimation();
     }
@@ -320,13 +325,13 @@ public sealed class WireLayer : FrameworkElement
         double t = (DateTime.Now - _start).TotalSeconds;
 
         // Idle wires first so the active one draws over any crossing.
-        foreach (var d in _wires.Where(d => !d.Wire.Active))
+        foreach (var d in _idle)
         {
             dc.DrawGeometry(null, IdlePen, d.Curve);
             DrawPort(dc, d.Wire.To, active: false);
         }
 
-        foreach (var d in _wires.Where(d => d.Wire.Active))
+        foreach (var d in _active)
         {
             var w = d.Wire;
             dc.DrawGeometry(null, GlowPen, d.Curve);
@@ -359,8 +364,8 @@ public sealed class WireLayer : FrameworkElement
         }
 
         // Host ports: one per distinct start point (the hub layout has two).
-        foreach (var g in _wires.GroupBy(d => d.Wire.From))
-            DrawPort(dc, g.Key, active: g.Any(d => d.Wire.Active));
+        foreach (var (at, active) in _hostPorts)
+            DrawPort(dc, at, active);
     }
 
     static void DrawPort(DrawingContext dc, Point p, bool active)

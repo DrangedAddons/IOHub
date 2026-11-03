@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.3
+- **Uses about a third of the memory.** Sitting in the tray: 32 MB instead of 115 MB. In use, after opening every
+  page: about 50 MB instead of about 175 MB.
+- The download is bigger, about 165 MB instead of 72 MB. The exe is no longer compressed: a compressed one has to
+  unpack all of .NET into memory every time it starts, which was most of that 115 MB.
+- The Overview's light beam does less work per frame.
+
 ## 0.1.2
 - **Switches stop replaying their slide.** A switch now only animates when you flip it; before, every switch on a page
   slid back into place whenever the page refreshed, which made the page look like it was constantly reloading.
