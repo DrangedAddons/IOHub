@@ -43,6 +43,7 @@ public partial class MainWindow : Window
             ConfirmDisplays = p => _settings.ConfirmNewDisplays ? DisplayConfirmWindow.Ask(p.Name) : Task.FromResult(true),
         };
         _switcher.Notice += (title, detail, color) => { if (_settings.ShowNotices) _toast.Show(title, detail, color: color); };
+        _hub.Refreshed += _switcher.Observe;
         _engine = new TriggerEngine(_profiles, _switcher, _toast, Dispatcher, () => ProfileMatcher.Active(_profiles, _hub));
 
         _overviewPage = new OverviewPage(_hub, _profiles, _settings);

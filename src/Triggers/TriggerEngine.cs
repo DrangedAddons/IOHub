@@ -29,6 +29,12 @@ public sealed class TriggerEngine : IDisposable
     readonly Dictionary<string, SetupSnapshot> _engaged = [];
     readonly Dictionary<string, DateTime> _lastFired = [];
 
+    // Automatic switches in the last few minutes, to catch a loop (switch → Big Picture recreated → revert → …).
+    readonly Queue<DateTime> _recentSwitches = new();
+    // A real loop repeats every few seconds; opening and closing Big Picture a few times on purpose stays well under.
+    const int LoopLimit = 8;
+    static readonly TimeSpan LoopWindow = TimeSpan.FromMinutes(2);
+
     long _pickerUntil = -1;
     readonly HashSet<int> _pickerSwallowed = [];
     bool _paused, _suspended;
@@ -198,6 +204,17 @@ public sealed class TriggerEngine : IDisposable
         _lastFired[t.Id] = DateTime.Now;
         StateChanged?.Invoke();
 
+        if (TooManySwitches())
+        {
+            SwitchLog.Write($"Triggers paused: {LoopLimit} automatic switches within {LoopWindow.TotalMinutes:0} minutes");
+            Paused = true;
+            _toast.Show("Triggers paused", $"They switched {LoopLimit} times in {LoopWindow.TotalMinutes:0} minutes, which looks like a loop. "
+                + "Resume them from the tray menu or Settings.", 8);
+            return;
+        }
+        // Changing displays makes Steam recreate the Big Picture window; don't take that as Big Picture closing.
+        if (t.Kind == TriggerKind.SteamBigPicture) _bigPicture.IgnoreClosesFor(TimeSpan.FromSeconds(20));
+
         if (!starting || (t.SwitchBack && !t.HasEnd && _engaged.ContainsKey(t.Id)))
         {
             if (!t.SwitchBack || !_engaged.Remove(t.Id, out var before)) return;
@@ -217,7 +234,18 @@ public sealed class TriggerEngine : IDisposable
         bool ok = await _switcher.SwitchTo(profile, t.HasEnd ? "Big Picture opened" : KeyNames.Describe(t));
         if (snapshot != null && ok) _engaged[t.Id] = snapshot;
         if (ok && t.Kind == TriggerKind.SteamBigPicture && t.ReopenBigPicture) await ReopenBigPicture();
+        // The switch itself can take a while (a TV powering up); give the displays time to settle afterwards too.
+        if (t.Kind == TriggerKind.SteamBigPicture) _bigPicture.IgnoreClosesFor(TimeSpan.FromSeconds(10));
         StateChanged?.Invoke();
+    }
+
+    bool TooManySwitches()
+    {
+        var now = DateTime.Now;
+        while (_recentSwitches.Count > 0 && now - _recentSwitches.Peek() > LoopWindow) _recentSwitches.Dequeue();
+        if (_recentSwitches.Count >= LoopLimit) { _recentSwitches.Clear(); return true; }
+        _recentSwitches.Enqueue(now);
+        return false;
     }
 
     /// <summary>Fires a trigger by hand from the Triggers page ("Test").</summary>

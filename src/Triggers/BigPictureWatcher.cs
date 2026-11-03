@@ -12,7 +12,8 @@ namespace IOHub.Triggers;
 /// </summary>
 public sealed class BigPictureWatcher : IDisposable
 {
-    const int ClosedGraceMs = 2000;
+    // Steam recreates the Big Picture window when the displays change, and a TV's HDMI link can take a few seconds.
+    const int ClosedGraceMs = 4000;
 
     readonly Dispatcher _ui;
     readonly DispatcherTimer _poll;
@@ -22,6 +23,7 @@ public sealed class BigPictureWatcher : IDisposable
     readonly Dictionary<uint, bool> _steamPids = [];
     DateTime _closedSince = DateTime.MaxValue;
     DateTime _ignoreClosesUntil = DateTime.MinValue;
+    bool _recheckPending;
 
     public bool IsOpen { get; private set; }
 
@@ -81,7 +83,16 @@ public sealed class BigPictureWatcher : IDisposable
         if (!IsOpen) return;
 
         var now = DateTime.Now;
-        if (now < _ignoreClosesUntil) return;
+        if (now < _ignoreClosesUntil)
+        {
+            // Look again once the window is over, in case Big Picture really did close meanwhile.
+            _closedSince = DateTime.MaxValue;
+            if (_recheckPending) return;
+            _recheckPending = true;
+            var wait = _ignoreClosesUntil - now + TimeSpan.FromMilliseconds(200);
+            _ui.InvokeAsync(async () => { await Task.Delay(wait); _recheckPending = false; Check(); });
+            return;
+        }
         if (_closedSince == DateTime.MaxValue)
         {
             _closedSince = now;

@@ -33,6 +33,12 @@ public sealed class Profile
     /// <summary>The webcam or capture device this profile uses.</summary>
     public string? Camera { get; set; }
 
+    /// <summary>LG TV power options for this profile, per display id. Only used for displays that are LG TVs.</summary>
+    public Dictionary<string, LgTvOptions> LgTv { get; set; } = [];
+
+    /// <summary>In <see cref="ProfileData.LgTvs"/>: an LG display someone said isn't a TV, so it isn't offered again.</summary>
+    public const string NotATv = "-";
+
     [JsonIgnore]
     public bool ChangesNothing => Displays.Count == 0 && AudioOutput == null && AudioInput == null && MainInput == null && Camera == null;
 
@@ -47,8 +53,14 @@ public sealed class Profile
         AudioInput = AudioInput,
         MainInput = MainInput,
         Camera = Camera,
+        LgTv = LgTv.ToDictionary(kv => kv.Key, kv => kv.Value with { }),
     };
 }
+
+/// <param name="PowerOn">Turn the TV on when switching to this profile (before the displays change).</param>
+/// <param name="PowerOff">Turn the TV off when switching from this profile to one that doesn't use it.</param>
+/// <param name="HdmiInput">1–4 to switch the TV to that input when it's turned on; 0 leaves it.</param>
+public sealed record LgTvOptions(bool PowerOn = false, bool PowerOff = false, int HdmiInput = 0);
 
 public static class ProfileColors
 {
@@ -77,6 +89,16 @@ public sealed class ProfileData
 
     /// <summary>Set once the first-run "Current setup" profile has been made, so deleting it doesn't bring it back.</summary>
     public bool SeededCurrentSetup { get; set; }
+
+    /// <summary>
+    /// Each display's last known resolution and refresh rate, by display id, so turning it back on restores them
+    /// instead of Windows' default (often 60 Hz).
+    /// </summary>
+    public Dictionary<string, Devices.DisplayMode> DisplayModes { get; set; } = [];
+
+    /// <summary>Displays that are LG TVs, by display id → LGTV Companion device ("Device1"). Remembered because a TV
+    /// that's switched off isn't detected at all.</summary>
+    public Dictionary<string, string> LgTvs { get; set; } = [];
 }
 
 /// <summary>The app's one copy of the profiles. Pages that edit them call <see cref="Save"/>; others listen to <see cref="Changed"/>.</summary>
@@ -105,6 +127,13 @@ public sealed class ProfileService
         AudioOutput = hub.Audio.FirstOrDefault(a => a.Flow == Devices.AudioFlow.Output && a.IsDefault)?.Id,
         AudioInput = hub.Audio.FirstOrDefault(a => a.Flow == Devices.AudioFlow.Input && a.IsDefault)?.Id,
     };
+
+    /// <summary>Writes to disk without telling listeners: for bookkeeping no page shows (remembered display modes).</summary>
+    public void SaveQuietly()
+    {
+        try { ProfileStore.Save(Data); }
+        catch { }
+    }
 
     /// <summary>Swaps in another set of profiles, triggers and remembered devices (import, reset) and saves.</summary>
     public void Replace(ProfileData data)

@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.0
+- **Displays come back at their own refresh rate.** Turning a display back on (switching from the TV to the monitor)
+  let Windows pick its mode, which is often 60 Hz. IO Hub now remembers each display's resolution and refresh rate
+  while it's on and asks for exactly that when it turns it back on. If a display still comes up different, the switch
+  notice says so.
+- **Safer switching.** Switches now queue instead of overlapping, display changes are at least 3 seconds apart, and
+  Big Picture is given time to settle after the displays change (Steam recreates its window, which could look like
+  Big Picture closing and set off a switch back and forth). If triggers switch 8 times within 2 minutes, they pause
+  and say so instead of carrying on.
+- **Switch log.** Every switch, its steps, how long Windows took and any problem go to `switch.log` in the data
+  folder (Settings → Your data → Open folder), so a problem can be traced.
+- **LG TV power, through LGTV Companion.** An LG TV gets an "LG TV power" row under its display in Profiles: per
+  profile, *Auto on* turns the TV on when switching to that profile (IO Hub waits for it to come up before changing
+  displays), *Auto off* turns it off when switching to a profile that doesn't use it, and *Input* can switch it to an
+  HDMI input. Needs [LGTV Companion](https://github.com/JPersson77/LGTVCompanion) installed with the TV set up in it.
+
 ## 0.1.3
 - **Uses about a third of the memory.** Sitting in the tray: 32 MB instead of 115 MB. In use, after opening every
   page: about 50 MB instead of about 175 MB.

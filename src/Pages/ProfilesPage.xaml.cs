@@ -25,7 +25,7 @@ public partial class ProfilesPage : UserControl
     sealed record Row(Section Section, string Id, string Name, string Detail, string Glyph, bool Connected, string Now, bool Disabled = false);
 
     const double LabelWidth = 284, NowWidth = 84, ProfileWidth = 188, AddWidth = 156;
-    const double HeadHeight = 92, SectionHeight = 64, RowHeight = 54;
+    const double HeadHeight = 92, SectionHeight = 64, RowHeight = 54, LgRowHeight = 70;
 
     static readonly Section[] Sections = [Section.Triggers, Section.Video, Section.Output, Section.Mic, Section.Input, Section.Camera];
 
@@ -245,6 +245,17 @@ public partial class ProfilesPage : UserControl
                 Place(BodyGrid, NowCell(row), dr, 1);
                 for (int i = 0; i < _data.Profiles.Count; i++)
                     Place(BodyGrid, DeviceCell(_data.Profiles[i], row), dr, 2 + i);
+
+                // An LG TV gets a row of its own for power control, under its display.
+                if (row.Section == Section.Video && _data.LgTvs.TryGetValue(row.Id, out var tvKey) && tvKey != Profile.NotATv)
+                {
+                    int lr = AddRow(LgRowHeight);
+                    Place(BodyGrid, new Border { Background = new SolidColorBrush(Color.FromArgb(0x08, 0xFF, 0xFF, 0xFF)) }, lr, 0, columns);
+                    Place(BodyGrid, new Border { Height = 1, VerticalAlignment = VerticalAlignment.Bottom, Background = Res<Brush>("LineBrush"), Opacity = 0.6 }, lr, 0, columns);
+                    Place(BodyGrid, LgLabel(row, tvKey), lr, 0);
+                    for (int i = 0; i < _data.Profiles.Count; i++)
+                        Place(BodyGrid, LgCell(_data.Profiles[i], row, tvKey), lr, 2 + i);
+                }
             }
         }
 
@@ -900,6 +911,100 @@ public partial class ProfilesPage : UserControl
         };
         radio.Click += (_, _) => { t.ProfileId = selected ? null : p.Id; Commit(); };
         return radio;
+    }
+
+    // ---------------- LG TV power ----------------
+
+    /// <summary>
+    /// The label for an LG TV's power row: which LGTV Companion TV it is, or what's missing (Companion itself, or
+    /// which of its TVs this display is).
+    /// </summary>
+    UIElement LgLabel(Row row, string tvKey)
+    {
+        var stack = new StackPanel { Margin = new Thickness(87, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center };
+        stack.Children.Add(new TextBlock { Text = "LG TV power", Style = Res<Style>("ItemTitle"), FontSize = 12.5 });
+
+        FrameworkElement detail;
+        if (!LgCompanion.IsInstalled)
+        {
+            var get = new Button { Style = Res<Style>("GhostButton"), Padding = new Thickness(8, 2, 8, 3), Margin = new Thickness(0, 4, 0, 0), HorizontalAlignment = HorizontalAlignment.Left,
+                Content = new TextBlock { Text = "Needs LGTV Companion · Get it", FontSize = 11.5 }, ToolTip = LgCompanion.DownloadUrl };
+            get.Click += (_, _) => { try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(LgCompanion.DownloadUrl) { UseShellExecute = true }); } catch { } };
+            detail = get;
+        }
+        else
+        {
+            var tvs = LgCompanion.Tvs();
+            var current = tvs.FirstOrDefault(t => t.Key == tvKey);
+            var pick = new Button { Style = Res<Style>("GhostButton"), Padding = new Thickness(8, 2, 8, 3), Margin = new Thickness(0, 4, 0, 0), HorizontalAlignment = HorizontalAlignment.Left,
+                Content = new TextBlock
+                {
+                    Text = current != null ? $"{current.Name} · {current.Ip}  ▾" : tvs.Count == 0 ? "Add the TV in LGTV Companion first" : "Which TV is this?  ▾",
+                    FontSize = 11.5, Foreground = Res<Brush>(current != null ? "MutedBrush" : "WarnBrush"),
+                },
+                ToolTip = "The TV in LGTV Companion that this display is" };
+            pick.Click += (_, _) =>
+            {
+                var menu = new ContextMenu { PlacementTarget = pick, Placement = PlacementMode.Bottom };
+                foreach (var tv in tvs)
+                {
+                    var item = new MenuItem { Header = $"{tv.Name}  ({tv.Ip})", FontWeight = tv.Key == tvKey ? FontWeights.SemiBold : FontWeights.Normal };
+                    item.Click += (_, _) => { _data.LgTvs[row.Id] = tv.Key; Commit(); };
+                    menu.Items.Add(item);
+                }
+                if (tvs.Count == 0) menu.Items.Add(new MenuItem { Header = "No TVs set up in LGTV Companion", IsEnabled = false });
+                menu.Items.Add(new Separator());
+                var notTv = new MenuItem { Header = "This isn't a TV" };
+                notTv.Click += (_, _) => { _data.LgTvs[row.Id] = Profile.NotATv; Commit(); };
+                menu.Items.Add(notTv);
+                menu.IsOpen = true;
+            };
+            detail = pick;
+        }
+        stack.Children.Add(detail);
+        return stack;
+    }
+
+    /// <summary>Auto on, auto off and the HDMI input for one profile. Only usable when the profile turns this display on.</summary>
+    UIElement LgCell(Profile p, Row row, string tvKey)
+    {
+        bool usable = LgCompanion.IsInstalled && tvKey != "" && p.Displays.Contains(row.Id);
+        var options = p.LgTv.TryGetValue(row.Id, out var o) ? o : new LgTvOptions();
+        void Set(LgTvOptions next) { p.LgTv[row.Id] = next; Commit(); }
+
+        var panel = new StackPanel { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(20, 0, 8, 0),
+            IsEnabled = usable,
+            ToolTip = usable ? null : !LgCompanion.IsInstalled ? "Needs LGTV Companion" : tvKey == "" ? "Pick which TV this is first" : $"Tick this display in {p.Name} first" };
+        CheckBox Switch(string label, bool value, Action<bool> set, string tip)
+        {
+            var sw = new CheckBox { Style = Res<Style>("Switch"), IsChecked = value, Margin = new Thickness(0, 2, 0, 2), ToolTip = tip,
+                Content = new TextBlock { Text = label, FontSize = 11.5 } };
+            sw.Click += (_, _) => set(sw.IsChecked == true);
+            return sw;
+        }
+        panel.Children.Add(Switch("Auto on", options.PowerOn, v => Set(options with { PowerOn = v }),
+            $"Turn the TV on when switching to {p.Name}"));
+        panel.Children.Add(Switch("Auto off", options.PowerOff, v => Set(options with { PowerOff = v }),
+            $"Turn the TV off when switching from {p.Name} to a profile that doesn't use it"));
+
+        var hdmi = new Button { Style = Res<Style>("IconButton"), Width = double.NaN, Height = double.NaN, Padding = new Thickness(4, 1, 4, 1), FontFamily = Res<FontFamily>("UiFont"),
+            HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 2, 0, 0),
+            Content = new TextBlock { Text = options.HdmiInput is >= 1 and <= 4 ? $"Input: HDMI {options.HdmiInput} ▾" : "Input: unchanged ▾", FontSize = 11 },
+            ToolTip = "Switch the TV to this input when it's turned on" };
+        hdmi.Click += (_, _) =>
+        {
+            var menu = new ContextMenu { PlacementTarget = hdmi, Placement = PlacementMode.Bottom };
+            foreach (var n in new[] { 0, 1, 2, 3, 4 })
+            {
+                var item = new MenuItem { Header = n == 0 ? "Leave it" : $"HDMI {n}", FontWeight = n == options.HdmiInput ? FontWeights.SemiBold : FontWeights.Normal };
+                item.Click += (_, _) => Set(options with { HdmiInput = n });
+                menu.Items.Add(item);
+            }
+            menu.IsOpen = true;
+        };
+        panel.Children.Add(hdmi);
+        if (!usable) panel.Opacity = 0.45;
+        return panel;
     }
 
     // ---------------- actions ----------------
