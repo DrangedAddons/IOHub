@@ -1,0 +1,242 @@
+<UserControl x:Class="IOHub.Pages.ProfilesPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- The matrix itself is built in code (ProfilesPage.xaml.cs); these are the pieces it's built from. -->
+    <UserControl.Resources>
+
+        <!-- Multi-select cell (displays). Background = the profile's colour. -->
+        <Style x:Key="MatrixCheck" TargetType="ToggleButton">
+            <Setter Property="Width" Value="34"/>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Grid Background="Transparent">
+                            <Border x:Name="Box" Width="20" Height="20" CornerRadius="6" BorderThickness="1.5" BorderBrush="#3D4350" Background="Transparent">
+                                <Path x:Name="Tick" Data="M 3.5 8.5 L 7 12 L 13 5" Stroke="#0E1014" StrokeThickness="2.2"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Visibility="Collapsed"/>
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Box" Property="BorderBrush" Value="{Binding Background, RelativeSource={RelativeSource TemplatedParent}}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Box" Property="Background" Value="{Binding Background, RelativeSource={RelativeSource TemplatedParent}}"/>
+                                <Setter TargetName="Box" Property="BorderBrush" Value="{Binding Background, RelativeSource={RelativeSource TemplatedParent}}"/>
+                                <Setter TargetName="Tick" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Single-select cell (audio, main input). -->
+        <Style x:Key="MatrixRadio" TargetType="ToggleButton">
+            <Setter Property="Width" Value="34"/>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Grid Background="Transparent">
+                            <Ellipse x:Name="Ring" Width="20" Height="20" StrokeThickness="1.5" Stroke="#3D4350"/>
+                            <Ellipse x:Name="Dot" Width="10" Height="10" Fill="{TemplateBinding Background}" Visibility="Collapsed"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Ring" Property="Stroke" Value="{Binding Background, RelativeSource={RelativeSource TemplatedParent}}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Ring" Property="Stroke" Value="{Binding Background, RelativeSource={RelativeSource TemplatedParent}}"/>
+                                <Setter TargetName="Ring" Property="StrokeThickness" Value="2"/>
+                                <Setter TargetName="Dot" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Main-display star, next to a ticked display. -->
+        <Style x:Key="StarToggle" TargetType="ToggleButton">
+            <Setter Property="Width" Value="26"/>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Grid Background="Transparent">
+                            <TextBlock x:Name="Star" Text="&#xE734;" FontFamily="{StaticResource IconFont}" FontSize="14"
+                                       Foreground="{StaticResource FaintBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Star" Property="Foreground" Value="{StaticResource SubtleBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Star" Property="Text" Value="&#xE735;"/>
+                                <Setter TargetName="Star" Property="Foreground" Value="{Binding Background, RelativeSource={RelativeSource TemplatedParent}}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Profile name, edited in place. -->
+        <Style x:Key="InlineEdit" TargetType="TextBox">
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="CaretBrush" Value="{StaticResource TextBrush}"/>
+            <Setter Property="SelectionBrush" Value="{StaticResource AccentBrush}"/>
+            <Setter Property="FontFamily" Value="{StaticResource DisplayFont}"/>
+            <Setter Property="FontSize" Value="14.5"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="Bd" BorderThickness="0,0,0,1" BorderBrush="Transparent" Padding="0,1,0,2" Background="Transparent">
+                            <ScrollViewer x:Name="PART_ContentHost" Focusable="False" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Line2Brush}"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Dashed "add a profile" column header. -->
+        <Style x:Key="AddColumnButton" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid Background="Transparent">
+                            <Rectangle x:Name="Dash" RadiusX="10" RadiusY="10" Stroke="#353A46" StrokeThickness="1.2" StrokeDashArray="4 3"/>
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Dash" Property="Stroke" Value="{StaticResource AccentBrush}"/>
+                                <Setter TargetName="Dash" Property="Fill" Value="#0D7B8CFF"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Margin="40,6,40,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock Text="Profiles" Style="{StaticResource PageTitle}"/>
+                <TextBlock Foreground="{StaticResource MutedBrush}" Margin="0,6,0,0" TextWrapping="Wrap"
+                           Text="Pick what each profile switches to. Leave a section blank and that profile won't touch it."/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,0,0">
+                <CheckBox x:Name="ShowDisabledSwitch" Style="{StaticResource Switch}" Content="Show disabled devices"
+                          VerticalAlignment="Center" Margin="0,0,18,0" WindowChrome.IsHitTestVisibleInChrome="True"
+                          Checked="ShowDisabled_Changed" Unchecked="ShowDisabled_Changed"
+                          ToolTip="List audio devices and cameras that are turned off in Windows"/>
+                <Button Style="{StaticResource GhostButton}" Click="Capture_Click" WindowChrome.IsHitTestVisibleInChrome="True"
+                        ToolTip="Make a profile from what's active on this PC right now">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE722;" FontFamily="{StaticResource IconFont}" FontSize="13" VerticalAlignment="Center"/>
+                        <TextBlock Text="Capture current setup" Margin="8,0,0,0" FontWeight="SemiBold"/>
+                    </StackPanel>
+                </Button>
+                <Button Style="{StaticResource AccentButton}" Click="New_Click" Margin="10,0,0,0" WindowChrome.IsHitTestVisibleInChrome="True">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE710;" FontFamily="{StaticResource IconFont}" FontSize="12" VerticalAlignment="Center"/>
+                        <TextBlock Text="New profile" Margin="8,0,0,0" FontWeight="SemiBold"/>
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <!-- Matrix -->
+        <Border x:Name="MatrixCard" Grid.Row="1" Style="{StaticResource Card}" Padding="0" Margin="40,24,40,32" VerticalAlignment="Top" ClipToBounds="True">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <!-- Profile headers stay put while the rows scroll; their horizontal offset follows the body. -->
+                <ScrollViewer x:Name="HeadScroll" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" Focusable="False">
+                    <Grid x:Name="HeadGrid"/>
+                </ScrollViewer>
+                <Border Grid.Row="0" Height="1" VerticalAlignment="Bottom" Background="{StaticResource Line2Brush}"/>
+                <ScrollViewer x:Name="BodyScroll" Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                              Focusable="False" ScrollChanged="BodyScroll_ScrollChanged">
+                    <ScrollViewer.Resources>
+                        <!-- The corner square between the two scrollbars uses this system brush. -->
+                        <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="Transparent"/>
+                    </ScrollViewer.Resources>
+                    <Grid x:Name="BodyGrid" Margin="0,0,0,8"/>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+
+        <!-- No profiles yet -->
+        <Border x:Name="EmptyState" Grid.Row="1" Style="{StaticResource Card}" Margin="40,24,40,32" Padding="40,44"
+                VerticalAlignment="Top" Visibility="Collapsed">
+            <StackPanel HorizontalAlignment="Center" MaxWidth="460">
+                <Border Width="56" Height="56" CornerRadius="16" Background="{StaticResource AccentGradient}" HorizontalAlignment="Center">
+                    <TextBlock Text="&#xE716;" Style="{StaticResource Icon}" FontSize="24" Foreground="White"/>
+                </Border>
+                <TextBlock Text="No profiles yet" Style="{StaticResource SectionTitle}" FontSize="18" HorizontalAlignment="Center" Margin="0,18,0,0"/>
+                <TextBlock Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,8,0,0"
+                           Text="A profile is a setup you can switch to, like &quot;Couch&quot; with the TV, its speakers and a controller, or &quot;Desk&quot; with your monitor and headset."/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,24,0,0">
+                    <Button Style="{StaticResource GhostButton}" Click="Capture_Click" Content="Capture current setup" FontWeight="SemiBold"/>
+                    <Button Style="{StaticResource AccentButton}" Click="New_Click" Content="New profile" FontWeight="SemiBold" Margin="10,0,0,0"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Delete confirmation -->
+        <Grid x:Name="ConfirmOverlay" Grid.RowSpan="2" Background="#B30E1014" Visibility="Collapsed">
+            <Border Style="{StaticResource Card}" Background="#1A1D24" BorderBrush="{StaticResource Line2Brush}" Width="380"
+                    HorizontalAlignment="Center" VerticalAlignment="Center" Padding="24">
+                <StackPanel>
+                    <TextBlock x:Name="ConfirmTitle" Style="{StaticResource SectionTitle}" FontSize="16" TextWrapping="Wrap"/>
+                    <TextBlock Text="Its settings are gone for good. Your devices aren't affected." Foreground="{StaticResource MutedBrush}"
+                               TextWrapping="Wrap" Margin="0,8,0,0"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,22,0,0">
+                        <Button Style="{StaticResource GhostButton}" Content="Cancel" Click="ConfirmCancel_Click" IsCancel="True"/>
+                        <Button x:Name="ConfirmDelete" Style="{StaticResource DangerButton}" Content="Delete" FontWeight="SemiBold"
+                                Margin="10,0,0,0" Click="ConfirmDelete_Click"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

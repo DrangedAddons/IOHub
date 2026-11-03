@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <!-- Only for the tray icon (NotifyIcon) and the colour dialog; WinForms names are used qualified so they don't clash with WPF. -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- WFO0003 wants DPI set through WinForms; the manifest setting is what WPF uses, so it stays. -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
+    <RootNamespace>IOHub</RootNamespace>
+    <Version>0.1.0</Version>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Regenerate with tools/make_icon.py -->
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <Product>IO Hub</Product>
+    <!-- Windows shows FileDescription (AssemblyTitle) as the program's name, e.g. in Task Manager and on firewall rules. -->
+    <AssemblyTitle>IO Hub</AssemblyTitle>
+    <Company>DrangedAddons</Company>
+    <Copyright>© 2026 DrangedAddons</Copyright>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Sidebar and dialog logo, tray icon; regenerate both with tools/make_icon.py -->
+    <Resource Include="logo.png" />
+    <Resource Include="app.ico" />
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <!-- dotnet publish -c Release  →  one self-contained IOHub.exe that runs without installing .NET -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+</Project>

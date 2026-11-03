@@ -1,0 +1,471 @@
+<UserControl x:Class="IOHub.Pages.DevicesPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:IOHub.Ui">
+
+    <UserControl.Resources>
+
+        <!-- Display card -->
+        <DataTemplate x:Key="DisplayCard">
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Border x:Name="Tile" Style="{StaticResource IconTile}">
+                            <TextBlock Text="{Binding Glyph}" Style="{StaticResource Icon}" FontSize="18"/>
+                        </Border>
+                        <StackPanel Grid.Column="1" Margin="14,0,10,0" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Name}" Style="{StaticResource ItemTitle}" FontSize="15"/>
+                            <TextBlock Text="{Binding Subtitle}" Style="{StaticResource Muted}" Margin="0,3,0,0"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top">
+                            <Border Style="{StaticResource BadgeAccent}" Margin="0" Visibility="{Binding IsPrimary, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="Primary"/>
+                            </Border>
+                            <Border Style="{StaticResource BadgeSuccess}" Margin="0" Visibility="{Binding IsSecondary, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="Active"/>
+                            </Border>
+                            <Border Style="{StaticResource Badge}" Margin="0" Visibility="{Binding IsInactive, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="Standby"/>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+
+                    <WrapPanel Margin="0,16,0,0">
+                        <Border Style="{StaticResource BadgeInfo}"><TextBlock Text="{Binding Connection}"/></Border>
+                        <Border Style="{StaticResource BadgeSuccess}" Visibility="{Binding HdrSupported, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="{Binding HdrText}"/>
+                        </Border>
+                        <Border Style="{StaticResource BadgeWarn}" Visibility="{Binding IsVirtual, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="Virtual"/>
+                        </Border>
+                    </WrapPanel>
+
+                    <Border Height="1" Background="{StaticResource LineBrush}" Margin="0,16"/>
+
+                    <ItemsControl ItemsSource="{Binding Details}" Focusable="False">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="0,0,12,12">
+                                    <TextBlock Text="{Binding Label}" Style="{StaticResource Overline}"/>
+                                    <TextBlock Text="{Binding Value}" Foreground="{StaticResource SubtleBrush}" Margin="0,3,0,0" TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding Value}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock Text="Plugged in, but not part of the desktop right now." Style="{StaticResource Muted}" TextWrapping="Wrap"
+                               Visibility="{Binding IsInactive, Converter={StaticResource BoolToVis}}"/>
+                </StackPanel>
+            </Border>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsPrimary}" Value="True">
+                    <Setter TargetName="Tile" Property="Background" Value="{StaticResource AccentSoftBrush}"/>
+                    <Setter TargetName="Tile" Property="BorderBrush" Value="#407B8CFF"/>
+                    <Setter TargetName="Tile" Property="TextElement.Foreground" Value="{StaticResource AccentBrush}"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- Audio row -->
+        <DataTemplate x:Key="AudioRow">
+            <Border x:Name="Row" CornerRadius="10" Padding="12,10" Margin="0,0,0,2" Background="Transparent">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Border x:Name="Tile" Style="{StaticResource IconTileSmall}" VerticalAlignment="Top" Grid.RowSpan="2">
+                        <TextBlock Text="{Binding Glyph}" Style="{StaticResource Icon}"/>
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="12,0,10,0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Name}" Style="{StaticResource ItemTitle}" ToolTip="{Binding Name}"/>
+                        <TextBlock Text="{Binding Adapter}" Style="{StaticResource Muted}" Margin="0,2,0,0" ToolTip="{Binding Adapter}"/>
+                    </StackPanel>
+                    <!-- Spans the badge column so every bar is the same length. -->
+                    <ProgressBar Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Style="{StaticResource Meter}" Value="{Binding Level, Mode=OneWay}"
+                                 Margin="12,8,0,0" Visibility="{Binding IsActive, Converter={StaticResource BoolToVis}}"/>
+                    <WrapPanel Grid.Column="2" VerticalAlignment="Top" MaxWidth="200" HorizontalAlignment="Right" Margin="0,2,0,0">
+                        <Border Style="{StaticResource BadgeAccent}" Visibility="{Binding IsDefault, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="Default"/>
+                        </Border>
+                        <Border Style="{StaticResource BadgeInfo}" Visibility="{Binding IsCommsDefault, Converter={StaticResource BoolToVis}}"
+                                ToolTip="Default for calls and voice chat">
+                            <TextBlock Text="Comms"/>
+                        </Border>
+                        <Border Style="{StaticResource BadgeWarn}" Visibility="{Binding IsDisplayAudio, Converter={StaticResource BoolToVis}}"
+                                ToolTip="Audio carried over HDMI or DisplayPort to a monitor or TV">
+                            <TextBlock Text="Display audio"/>
+                        </Border>
+                        <Border Style="{StaticResource Badge}" Visibility="{Binding IsInactive, Converter={StaticResource BoolToVis}}">
+                            <TextBlock x:Name="StateText" Text="{Binding State}"/>
+                        </Border>
+                    </WrapPanel>
+                </Grid>
+            </Border>
+            <DataTemplate.Triggers>
+                <Trigger SourceName="Row" Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Row" Property="Background" Value="{StaticResource HoverBrush}"/>
+                </Trigger>
+                <DataTrigger Binding="{Binding IsActive}" Value="False">
+                    <Setter TargetName="Row" Property="Opacity" Value="0.5"/>
+                </DataTrigger>
+                <!-- Disabled in Windows: the same red wash and edge as the Profiles table. -->
+                <DataTrigger Binding="{Binding IsDisabled}" Value="True">
+                    <Setter TargetName="Row" Property="Opacity" Value="0.85"/>
+                    <Setter TargetName="Row" Property="Background" Value="#16F06A6A"/>
+                    <Setter TargetName="Row" Property="BorderBrush" Value="#90F06A6A"/>
+                    <Setter TargetName="Row" Property="BorderThickness" Value="3,0,0,0"/>
+                    <Setter TargetName="StateText" Property="Foreground" Value="#E08A8A"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsDefault}" Value="True">
+                    <Setter TargetName="Tile" Property="Background" Value="{StaticResource AccentSoftBrush}"/>
+                    <Setter TargetName="Tile" Property="BorderBrush" Value="#407B8CFF"/>
+                    <Setter TargetName="Tile" Property="TextElement.Foreground" Value="{StaticResource AccentBrush}"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- Controller card -->
+        <DataTemplate x:Key="ControllerCard">
+            <Border Style="{StaticResource Card}" Padding="18">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Style="{StaticResource IconTile}" Background="{StaticResource AccentSoftBrush}" BorderBrush="#407B8CFF"
+                            TextElement.Foreground="{StaticResource AccentBrush}" VerticalAlignment="Top">
+                        <TextBlock Text="{Binding Glyph}" Style="{StaticResource Icon}" FontSize="20"/>
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="14,0,0,0">
+                        <TextBlock Text="{Binding Name}" Style="{StaticResource ItemTitle}" FontSize="14.5" ToolTip="{Binding Name}"/>
+                        <TextBlock Text="{Binding Subtitle}" Style="{StaticResource Muted}" Margin="0,3,0,0"/>
+                        <WrapPanel Margin="0,12,0,0">
+                            <Border Style="{StaticResource BadgeInfo}" Visibility="{Binding HasConnection, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="{Binding Connection}"/>
+                            </Border>
+                            <Border x:Name="Battery" Style="{StaticResource BadgeSuccess}" Visibility="{Binding HasBattery, Converter={StaticResource BoolToVis}}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding BatteryGlyph}" FontFamily="{StaticResource IconFont}" FontSize="12" VerticalAlignment="Center" Margin="0,1,5,0"/>
+                                    <TextBlock Text="{Binding BatteryText}"/>
+                                </StackPanel>
+                            </Border>
+                        </WrapPanel>
+                    </StackPanel>
+                </Grid>
+            </Border>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsBatteryLow}" Value="True">
+                    <Setter TargetName="Battery" Property="Style" Value="{StaticResource BadgeWarn}"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- Camera card -->
+        <DataTemplate x:Key="CameraCard">
+            <Border x:Name="Card" Style="{StaticResource Card}" Padding="18">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Border x:Name="Tile" Style="{StaticResource IconTile}" Background="{StaticResource AccentSoftBrush}" BorderBrush="#407B8CFF"
+                            TextElement.Foreground="{StaticResource AccentBrush}" VerticalAlignment="Top">
+                        <TextBlock Text="{Binding Glyph}" Style="{StaticResource Icon}" FontSize="20"/>
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="14,0,0,0">
+                        <TextBlock Text="{Binding Name}" Style="{StaticResource ItemTitle}" FontSize="14.5" ToolTip="{Binding Name}"/>
+                        <TextBlock Text="{Binding Subtitle}" Style="{StaticResource Muted}" Margin="0,3,0,0"/>
+                        <WrapPanel Margin="0,12,0,0">
+                            <Border Style="{StaticResource BadgeInfo}"><TextBlock Text="{Binding Connection}"/></Border>
+                            <Border Style="{StaticResource Badge}" Visibility="{Binding IsDisabled, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="Disabled"/>
+                            </Border>
+                        </WrapPanel>
+                    </StackPanel>
+                </Grid>
+            </Border>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsEnabled}" Value="False">
+                    <Setter TargetName="Card" Property="Opacity" Value="0.85"/>
+                    <Setter TargetName="Card" Property="Background" Value="#241A1F"/>
+                    <Setter TargetName="Card" Property="BorderBrush" Value="#90F06A6A"/>
+                    <Setter TargetName="Tile" Property="Background" Value="{StaticResource Surface2Brush}"/>
+                    <Setter TargetName="Tile" Property="BorderBrush" Value="{StaticResource Line2Brush}"/>
+                    <Setter TargetName="Tile" Property="TextElement.Foreground" Value="{StaticResource MutedBrush}"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- Keyboard / mouse row -->
+        <DataTemplate x:Key="InputRow">
+            <Border x:Name="Row" CornerRadius="10" Padding="12,10" Margin="0,0,0,2" Background="Transparent">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Style="{StaticResource IconTileSmall}">
+                        <TextBlock Text="{Binding Glyph}" Style="{StaticResource Icon}"/>
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="12,0,10,0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Name}" Style="{StaticResource ItemTitle}" ToolTip="{Binding Name}"/>
+                        <TextBlock Text="{Binding Subtitle}" Style="{StaticResource Muted}" Margin="0,2,0,0"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border Style="{StaticResource Badge}" Visibility="{Binding HasMultipleInterfaces, Converter={StaticResource BoolToVis}}"
+                                ToolTip="One device that shows up to Windows more than once, e.g. a receiver or a mouse with macro keys">
+                            <TextBlock Text="{Binding InterfacesText}"/>
+                        </Border>
+                        <Border Style="{StaticResource BadgeInfo}" Margin="0"><TextBlock Text="{Binding Connection}"/></Border>
+                    </StackPanel>
+                </Grid>
+            </Border>
+            <DataTemplate.Triggers>
+                <Trigger SourceName="Row" Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Row" Property="Background" Value="{StaticResource HoverBrush}"/>
+                </Trigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <Style x:Key="EmptyNote" TargetType="TextBlock" BasedOn="{StaticResource Muted}">
+            <Setter Property="Margin" Value="12,6,12,10"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="TextTrimming" Value="None"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Margin="40,6,40,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock Text="Devices" Style="{StaticResource PageTitle}"/>
+                <TextBlock Text="Everything this PC can switch between. The list updates on its own as things are plugged in, turned on or changed."
+                           Foreground="{StaticResource MutedBrush}" Margin="0,6,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,0,0">
+            <CheckBox x:Name="ShowDisabledSwitch" Style="{StaticResource Switch}" Content="Show disabled devices"
+                      VerticalAlignment="Center" Margin="0,0,18,0" WindowChrome.IsHitTestVisibleInChrome="True"
+                      Checked="ShowDisabled_Changed" Unchecked="ShowDisabled_Changed"
+                      ToolTip="List audio devices and cameras that are turned off in Windows"/>
+            <Button Style="{StaticResource GhostButton}" VerticalAlignment="Center"
+                    Click="Refresh_Click" WindowChrome.IsHitTestVisibleInChrome="True">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock x:Name="RefreshGlyph" Text="&#xE72C;" FontFamily="{StaticResource IconFont}" FontSize="13"
+                               VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5">
+                        <TextBlock.RenderTransform><RotateTransform/></TextBlock.RenderTransform>
+                    </TextBlock>
+                    <TextBlock Text="Refresh" Margin="8,0,0,0" FontWeight="SemiBold"/>
+                </StackPanel>
+            </Button>
+            </StackPanel>
+        </Grid>
+
+        <!-- Tabs -->
+        <Border Grid.Row="1" Margin="40,24,40,20" HorizontalAlignment="Left" Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="11" Padding="3">
+            <StackPanel Orientation="Horizontal">
+                <RadioButton x:Name="VideoTab" Style="{StaticResource SegTab}" IsChecked="True" Checked="Tab_Checked">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE7F4;" FontFamily="{StaticResource IconFont}" FontSize="14" VerticalAlignment="Center"/>
+                        <TextBlock Text="Video" Margin="9,0,0,0" FontWeight="SemiBold"/>
+                        <TextBlock x:Name="VideoCount" Style="{StaticResource CountPill}"/>
+                    </StackPanel>
+                </RadioButton>
+                <RadioButton x:Name="AudioTab" Style="{StaticResource SegTab}" Checked="Tab_Checked">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE767;" FontFamily="{StaticResource IconFont}" FontSize="14" VerticalAlignment="Center"/>
+                        <TextBlock Text="Audio" Margin="9,0,0,0" FontWeight="SemiBold"/>
+                        <TextBlock x:Name="AudioCount" Style="{StaticResource CountPill}"/>
+                    </StackPanel>
+                </RadioButton>
+                <RadioButton x:Name="InputTab" Style="{StaticResource SegTab}" Checked="Tab_Checked">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE7FC;" FontFamily="{StaticResource IconFont}" FontSize="14" VerticalAlignment="Center"/>
+                        <TextBlock Text="Input" Margin="9,0,0,0" FontWeight="SemiBold"/>
+                        <TextBlock x:Name="InputCount" Style="{StaticResource CountPill}"/>
+                    </StackPanel>
+                </RadioButton>
+                <RadioButton x:Name="CameraTab" Style="{StaticResource SegTab}" Checked="Tab_Checked">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE8B8;" FontFamily="{StaticResource IconFont}" FontSize="14" VerticalAlignment="Center"/>
+                        <TextBlock Text="Cameras" Margin="9,0,0,0" FontWeight="SemiBold"/>
+                        <TextBlock x:Name="CameraCount" Style="{StaticResource CountPill}"/>
+                    </StackPanel>
+                </RadioButton>
+            </StackPanel>
+        </Border>
+
+        <!-- ===== Video ===== -->
+        <ScrollViewer x:Name="VideoPanel" Grid.Row="2" VerticalScrollBarVisibility="Auto" Focusable="False">
+            <StackPanel Margin="40,0,28,32">
+                <TextBlock x:Name="VideoError" Foreground="{StaticResource DangerBrush}" Margin="0,0,0,12" TextWrapping="Wrap" Visibility="Collapsed"/>
+                <Border Style="{StaticResource Card}" Padding="0" Height="250" Margin="0,0,12,0">
+                    <Border.Background>
+                        <RadialGradientBrush Center="0.5,0" GradientOrigin="0.5,0" RadiusX="0.8" RadiusY="1.2">
+                            <GradientStop Color="#1B1F2A" Offset="0"/>
+                            <GradientStop Color="#16191F" Offset="1"/>
+                        </RadialGradientBrush>
+                    </Border.Background>
+                    <Grid>
+                        <TextBlock Text="ARRANGEMENT" Style="{StaticResource Overline}" Margin="20,16,0,0" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,14,20,0">
+                            <Border Width="10" Height="10" CornerRadius="3" Background="{StaticResource AccentSoftBrush}" BorderBrush="{StaticResource AccentBrush}" BorderThickness="1" VerticalAlignment="Center"/>
+                            <TextBlock Text="Primary" FontSize="11.5" Foreground="{StaticResource MutedBrush}" Margin="6,0,14,0"/>
+                            <Border Width="10" Height="10" CornerRadius="3" Background="#232731" BorderBrush="{StaticResource Line2Brush}" BorderThickness="1" VerticalAlignment="Center"/>
+                            <TextBlock Text="Extended" FontSize="11.5" Foreground="{StaticResource MutedBrush}" Margin="6,0,0,0"/>
+                        </StackPanel>
+                        <ui:DisplayLayoutView x:Name="LayoutMap" Margin="40,48,40,26"/>
+                    </Grid>
+                </Border>
+
+                <StackPanel Orientation="Horizontal" Margin="2,28,0,14">
+                    <TextBlock Text="Connected displays" Style="{StaticResource SectionTitle}"/>
+                    <TextBlock x:Name="DisplaysSummary" Style="{StaticResource CountPill}" Margin="10,1,0,0"/>
+                </StackPanel>
+                <ItemsControl x:Name="DisplayList" ItemTemplate="{StaticResource DisplayCard}" Focusable="False" Margin="0,0,12,0">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><ui:AdaptiveGrid MinItemWidth="340"/></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                </ItemsControl>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- ===== Audio ===== -->
+        <ScrollViewer x:Name="AudioPanel" Grid.Row="2" VerticalScrollBarVisibility="Auto" Focusable="False" Visibility="Collapsed">
+            <StackPanel Margin="40,0,28,32">
+                <TextBlock x:Name="AudioError" Foreground="{StaticResource DangerBrush}" Margin="0,0,0,12" TextWrapping="Wrap" Visibility="Collapsed"/>
+                <ui:AdaptiveGrid MinItemWidth="400" Margin="0,0,12,0">
+                    <Border Style="{StaticResource Card}" Padding="10,16,10,10">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="12,0,0,12">
+                                <TextBlock Text="&#xE767;" FontFamily="{StaticResource IconFont}" FontSize="15" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
+                                <TextBlock Text="Output" Style="{StaticResource SectionTitle}" Margin="10,0,0,0"/>
+                                <TextBlock x:Name="OutputCount" Style="{StaticResource CountPill}"/>
+                            </StackPanel>
+                            <ItemsControl x:Name="OutputList" ItemTemplate="{StaticResource AudioRow}" Focusable="False"/>
+                            <TextBlock x:Name="OutputEmpty" Style="{StaticResource EmptyNote}" Text="No playback devices found." Visibility="Collapsed"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}" Padding="10,16,10,10">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="12,0,0,12">
+                                <TextBlock Text="&#xE720;" FontFamily="{StaticResource IconFont}" FontSize="15" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
+                                <TextBlock Text="Input" Style="{StaticResource SectionTitle}" Margin="10,0,0,0"/>
+                                <TextBlock x:Name="InputAudioCount" Style="{StaticResource CountPill}"/>
+                            </StackPanel>
+                            <ItemsControl x:Name="InputAudioList" ItemTemplate="{StaticResource AudioRow}" Focusable="False"/>
+                            <TextBlock x:Name="InputAudioEmpty" Style="{StaticResource EmptyNote}" Text="No recording devices found." Visibility="Collapsed"/>
+                        </StackPanel>
+                    </Border>
+                </ui:AdaptiveGrid>
+                <TextBlock Style="{StaticResource Muted}" Margin="4,14,0,0" TextWrapping="Wrap" TextTrimming="None"
+                           Text="Level bars show what each device is playing or hearing right now. Microphones only show a level while an app is listening."/>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- ===== Input ===== -->
+        <ScrollViewer x:Name="InputPanel" Grid.Row="2" VerticalScrollBarVisibility="Auto" Focusable="False" Visibility="Collapsed">
+            <StackPanel Margin="40,0,28,32">
+                <TextBlock x:Name="InputError" Foreground="{StaticResource DangerBrush}" Margin="0,0,0,12" TextWrapping="Wrap" Visibility="Collapsed"/>
+                <StackPanel Orientation="Horizontal" Margin="2,0,0,14">
+                    <TextBlock Text="Controllers" Style="{StaticResource SectionTitle}"/>
+                    <TextBlock x:Name="ControllerCount" Style="{StaticResource CountPill}" Margin="10,1,0,0"/>
+                </StackPanel>
+                <ItemsControl x:Name="ControllerList" ItemTemplate="{StaticResource ControllerCard}" Focusable="False" Margin="0,0,12,0">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><ui:AdaptiveGrid MinItemWidth="300"/></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                </ItemsControl>
+                <Border x:Name="ControllerEmpty" Style="{StaticResource Card}" Margin="0,0,12,0" BorderBrush="{StaticResource Line2Brush}" Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal">
+                        <Border Style="{StaticResource IconTile}">
+                            <TextBlock Text="&#xE7FC;" Style="{StaticResource Icon}" FontSize="20" Foreground="{StaticResource FaintBrush}"/>
+                        </Border>
+                        <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
+                            <TextBlock Text="No controllers connected" Style="{StaticResource ItemTitle}"/>
+                            <TextBlock Text="Turn one on or plug it in. It shows up here within a couple of seconds." Style="{StaticResource Muted}" Margin="0,3,0,0"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <ui:AdaptiveGrid MinItemWidth="400" Margin="0,28,12,0">
+                    <Border Style="{StaticResource Card}" Padding="10,16,10,10">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="12,0,0,12">
+                                <TextBlock Text="&#xE765;" FontFamily="{StaticResource IconFont}" FontSize="15" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
+                                <TextBlock Text="Keyboards" Style="{StaticResource SectionTitle}" Margin="10,0,0,0"/>
+                                <TextBlock x:Name="KeyboardCount" Style="{StaticResource CountPill}"/>
+                            </StackPanel>
+                            <ItemsControl x:Name="KeyboardList" ItemTemplate="{StaticResource InputRow}" Focusable="False"/>
+                            <TextBlock x:Name="KeyboardEmpty" Style="{StaticResource EmptyNote}" Text="No keyboards found." Visibility="Collapsed"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}" Padding="10,16,10,10">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="12,0,0,12">
+                                <TextBlock Text="&#xE962;" FontFamily="{StaticResource IconFont}" FontSize="15" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
+                                <TextBlock Text="Mice &amp; pointers" Style="{StaticResource SectionTitle}" Margin="10,0,0,0"/>
+                                <TextBlock x:Name="MouseCount" Style="{StaticResource CountPill}"/>
+                            </StackPanel>
+                            <ItemsControl x:Name="MouseList" ItemTemplate="{StaticResource InputRow}" Focusable="False"/>
+                            <TextBlock x:Name="MouseEmpty" Style="{StaticResource EmptyNote}" Text="No mice found." Visibility="Collapsed"/>
+                        </StackPanel>
+                    </Border>
+                </ui:AdaptiveGrid>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- ===== Cameras ===== -->
+        <ScrollViewer x:Name="CameraPanel" Grid.Row="2" VerticalScrollBarVisibility="Auto" Focusable="False" Visibility="Collapsed">
+            <StackPanel Margin="40,0,28,32">
+                <TextBlock x:Name="CameraError" Foreground="{StaticResource DangerBrush}" Margin="0,0,0,12" TextWrapping="Wrap" Visibility="Collapsed"/>
+                <StackPanel Orientation="Horizontal" Margin="2,0,0,14">
+                    <TextBlock Text="Webcams &amp; capture" Style="{StaticResource SectionTitle}"/>
+                    <TextBlock x:Name="CameraSummary" Style="{StaticResource CountPill}" Margin="10,1,0,0"/>
+                </StackPanel>
+                <ItemsControl x:Name="CameraList" ItemTemplate="{StaticResource CameraCard}" Focusable="False" Margin="0,0,12,0">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><ui:AdaptiveGrid MinItemWidth="300"/></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                </ItemsControl>
+                <Border x:Name="CameraEmpty" Style="{StaticResource Card}" Margin="0,0,12,0" BorderBrush="{StaticResource Line2Brush}" Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal">
+                        <Border Style="{StaticResource IconTile}">
+                            <TextBlock Text="&#xE8B8;" Style="{StaticResource Icon}" FontSize="20" Foreground="{StaticResource FaintBrush}"/>
+                        </Border>
+                        <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
+                            <TextBlock Text="No cameras connected" Style="{StaticResource ItemTitle}"/>
+                            <TextBlock Text="Plug in a webcam or capture card and it shows up here." Style="{StaticResource Muted}" Margin="0,3,0,0"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>
