@@ -22,6 +22,8 @@ public sealed class AppSettings
     // Updates
     public bool CheckForUpdates { get; set; } = true;
     public bool InstallUpdatesAutomatically { get; set; }
+    /// <summary>Also offer pre-releases (betas), not just full releases.</summary>
+    public bool BetaUpdates { get; set; }
 
     static string FilePath => Path.Combine(AppInfo.DataDir, "settings.json");
 

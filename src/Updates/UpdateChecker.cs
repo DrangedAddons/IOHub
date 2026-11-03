@@ -48,7 +48,7 @@ public sealed class UpdateChecker
         Changed?.Invoke();
         try
         {
-            var found = await AppUpdater.CheckAsync();
+            var found = await AppUpdater.CheckAsync(_settings.BetaUpdates);
             bool isNew = found != null && found.Version != Available?.Version;
             Available = found;
             if (isNew) Found?.Invoke(found!);

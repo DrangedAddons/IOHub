@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1
+- **Beta updates.** Settings → Updates has a new "Get beta updates" switch. With it on, the app also offers
+  pre-release versions to try new features early. Leave it off to get full releases only; if you turn it off while on
+  a beta, you move to the next full release when it's out.
+
 ## 0.1.0
 
 First release.

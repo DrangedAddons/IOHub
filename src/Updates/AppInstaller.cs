@@ -49,7 +49,8 @@ public static class AppInstaller
         if (File.Exists(InstalledExe))
         {
             // Already installed: a newer download upgrades it, then the installed copy opens either way.
-            var installed = FileVersionInfo.GetVersionInfo(InstalledExe).FileVersion ?? "0";
+            // ProductVersion keeps a beta suffix; FileVersion can't.
+            var installed = FileVersionInfo.GetVersionInfo(InstalledExe).ProductVersion ?? "0";
             var upgrade = Versions.Compare(AppUpdater.CurrentVersion, installed) > 0;
             if (upgrade)
             {

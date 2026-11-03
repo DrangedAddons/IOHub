@@ -17,6 +17,17 @@ public static class AppUpdater
 {
     const string ExeName = AppInfo.Id + ".exe";
 
+    /// <summary>
+    /// This build's version, including a beta suffix ("0.2.0-beta.1"). It comes from &lt;Version&gt; in the project,
+    /// which ends up in the informational version; the assembly version can't hold the suffix.
+    /// Declared before <see cref="Http"/>: static fields initialise in order, and the client's user agent uses it.
+    /// </summary>
+    public static string CurrentVersion { get; } =
+        (typeof(AppUpdater).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion
+         ?? typeof(AppUpdater).Assembly.GetName().Version?.ToString(3) ?? "0.0.0")
+        .Split('+')[0]; // drop any build metadata
+
     static readonly HttpClient Http = MakeClient();
 
     static HttpClient MakeClient()
@@ -27,7 +38,7 @@ public static class AppUpdater
         return http;
     }
 
-    public static string CurrentVersion => typeof(AppUpdater).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+    public static bool IsBeta => CurrentVersion.Contains('-');
 
     /// <summary>
     /// The running .exe if it's a release build (one self-contained file), whatever it's called: browsers save
@@ -50,24 +61,37 @@ public static class AppUpdater
 
     public static bool CanSelfUpdate => ExePath is not null;
 
-    /// <summary>The latest release if it's newer than this copy and carries IOHub.exe; null if not (or no releases yet).</summary>
-    public static async Task<AppRelease?> CheckAsync()
+    /// <summary>
+    /// The newest release that's newer than this copy and carries IOHub.exe, or null. Betas are GitHub pre-releases;
+    /// they're only offered with <paramref name="includeBeta"/>. Full releases are always offered, so someone who
+    /// leaves the beta moves on at the next full release.
+    /// </summary>
+    public static async Task<AppRelease?> CheckAsync(bool includeBeta)
     {
-        using var response = await Http.GetAsync($"https://api.github.com/repos/{AppInfo.Repo}/releases/latest");
-        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null; // nothing released yet
+        using var response = await Http.GetAsync($"https://api.github.com/repos/{AppInfo.Repo}/releases?per_page=20");
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null; // repo not reachable yet
         response.EnsureSuccessStatusCode();
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        var release = doc.RootElement;
-        var version = (release.GetProperty("tag_name").GetString() ?? "").TrimStart('v', 'V');
-        if (Versions.Compare(version, CurrentVersion) <= 0) return null;
 
-        var exeUrl = release.GetProperty("assets").EnumerateArray()
-            .Where(a => (a.GetProperty("name").GetString() ?? "").Equals(ExeName, StringComparison.OrdinalIgnoreCase))
-            .Select(a => a.GetProperty("browser_download_url").GetString())
-            .FirstOrDefault();
-        return exeUrl is null ? null : new AppRelease(version, exeUrl,
-            release.GetProperty("html_url").GetString() ?? AppInfo.RepoUrl,
-            release.TryGetProperty("body", out var body) ? body.GetString() ?? "" : "");
+        AppRelease? best = null;
+        foreach (var release in doc.RootElement.EnumerateArray())
+        {
+            if (release.GetProperty("draft").GetBoolean()) continue;
+            if (release.GetProperty("prerelease").GetBoolean() && !includeBeta) continue;
+            var version = (release.GetProperty("tag_name").GetString() ?? "").TrimStart('v', 'V');
+            if (Versions.Compare(version, CurrentVersion) <= 0) continue;
+            if (best != null && Versions.Compare(version, best.Version) <= 0) continue;
+
+            var exeUrl = release.GetProperty("assets").EnumerateArray()
+                .Where(a => (a.GetProperty("name").GetString() ?? "").Equals(ExeName, StringComparison.OrdinalIgnoreCase))
+                .Select(a => a.GetProperty("browser_download_url").GetString())
+                .FirstOrDefault();
+            if (exeUrl is null) continue;
+            best = new AppRelease(version, exeUrl,
+                release.GetProperty("html_url").GetString() ?? AppInfo.RepoUrl,
+                release.TryGetProperty("body", out var body) ? body.GetString() ?? "" : "");
+        }
+        return best;
     }
 
     /// <summary>Downloads and swaps in the new .exe, then starts it. The caller should quit after this returns.</summary>
@@ -190,19 +214,40 @@ public static class AppUpdater
 
 public static class Versions
 {
-    /// <summary>Compares dotted numeric versions ("v0.2.1" vs "0.10.0"), ignoring any prefix.</summary>
+    /// <summary>
+    /// Compares versions like "v0.2.1", "0.10.0" and "0.2.0-beta.1". The numbers decide first; with equal numbers a
+    /// full release beats any beta of it, and betas compare part by part (beta.2 after beta.1).
+    /// </summary>
     public static int Compare(string a, string b)
     {
-        var x = Parts(a);
-        var y = Parts(b);
+        var (coreA, preA) = Split(a);
+        var (coreB, preB) = Split(b);
+        for (var i = 0; i < Math.Max(coreA.Length, coreB.Length); i++)
+        {
+            var c = (i < coreA.Length ? coreA[i] : 0).CompareTo(i < coreB.Length ? coreB[i] : 0);
+            if (c != 0) return c;
+        }
+        if (preA == preB) return 0;
+        if (preA == "") return 1;
+        if (preB == "") return -1;
+        var x = preA.Split('.');
+        var y = preB.Split('.');
         for (var i = 0; i < Math.Max(x.Length, y.Length); i++)
         {
-            var c = (i < x.Length ? x[i] : 0).CompareTo(i < y.Length ? y[i] : 0);
+            if (i >= x.Length) return -1;
+            if (i >= y.Length) return 1;
+            bool nx = long.TryParse(x[i], out var vx), ny = long.TryParse(y[i], out var vy);
+            int c = nx && ny ? vx.CompareTo(vy) : nx ? -1 : ny ? 1 : string.CompareOrdinal(x[i], y[i]);
             if (c != 0) return c;
         }
         return 0;
     }
 
-    static long[] Parts(string v) =>
-        Regex.Matches(v, @"\d+").Select(m => long.TryParse(m.Value, out var n) ? n : 0).ToArray();
+    static (long[] Core, string Pre) Split(string v)
+    {
+        var m = Regex.Match(v, @"(\d+(?:\.\d+)*)(?:-([0-9A-Za-z.-]+))?");
+        if (!m.Success) return ([], "");
+        var core = m.Groups[1].Value.Split('.').Select(p => long.TryParse(p, out var n) ? n : 0).ToArray();
+        return (core, m.Groups[2].Value);
+    }
 }

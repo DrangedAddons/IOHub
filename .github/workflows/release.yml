@@ -1,4 +1,5 @@
-# Builds IOHub.exe and publishes a GitHub Release when a version tag (v*) is pushed.
+# Builds IOHub.exe and publishes a GitHub Release when a version tag (v*) is pushed. A tag with a suffix
+# (v0.2.0-beta.1) becomes a pre-release: only copies with "Get beta updates" on are offered it.
 # Ordinary pushes to main do nothing - only a deliberately pushed tag cuts a release, and the
 # release is what every copy of the app offers as its "Update and restart".
 name: Release
@@ -49,5 +50,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" publish/IOHub.exe \
+          PRERELEASE=""
+          case "${GITHUB_REF_NAME}" in *-*) PRERELEASE="--prerelease" ;; esac
+          gh release create "${GITHUB_REF_NAME}" publish/IOHub.exe ${PRERELEASE} \
             --title "IO Hub ${GITHUB_REF_NAME}" --notes-file notes.md

@@ -115,6 +115,7 @@ public partial class SettingsPage : UserControl
 
         string status;
         if (_updates.Progress is { } p) status = $"Downloading version {_updates.Available?.Version}… {p:P0}";
+        else if (_updates.Busy && _updates.Available == null && _updates.LastChecked == null) status = "Checking…";
         else if (_updates.Busy) status = "Checking…";
         else if (_updates.Error != null) status = _updates.Error;
         else if (_updates.Available is { } r) status = $"Version {r.Version} is ready to install.";
@@ -140,10 +141,19 @@ public partial class SettingsPage : UserControl
             check.Click += async (_, _) => await _updates.CheckAsync();
             buttons.Children.Add(check);
         }
-        rows.Add(Row($"Version {AppUpdater.CurrentVersion}", status, buttons, warn: _updates.Error != null));
+        rows.Add(Row($"Version {AppUpdater.CurrentVersion}" + (AppUpdater.IsBeta ? " (beta)" : ""), status, buttons, warn: _updates.Error != null));
         rows.Add(Row("Check for updates automatically",
             "Looks once shortly after starting and then every six hours. One small request to GitHub each time.",
             Switch(_settings.CheckForUpdates, v => { _settings.CheckForUpdates = v; _settings.Save(); })));
+        rows.Add(Row("Get beta updates",
+            "Try new features before everyone else. Betas can have rough edges. Turn this off to stick to full releases: "
+            + (AppUpdater.IsBeta ? "you're on a beta now, so you'll move to the next full release when it's out." : "that's what most people want."),
+            Switch(_settings.BetaUpdates, v =>
+            {
+                _settings.BetaUpdates = v;
+                _settings.Save();
+                _ = _updates.CheckAsync(); // the answer may change straight away
+            })));
         rows.Add(Row("Install updates automatically",
             "Only while the window is closed, so it never interrupts you. It restarts straight back into the tray.",
             Switch(_settings.InstallUpdatesAutomatically, v => { _settings.InstallUpdatesAutomatically = v; _settings.Save(); },
