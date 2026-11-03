@@ -26,7 +26,7 @@ public partial class ProfilesPage : UserControl
     sealed record Row(Section Section, string Id, string Name, string Detail, string Glyph, bool Connected, string Now, bool Disabled = false);
 
     const double LabelWidth = 284, NowWidth = 84, ProfileWidth = 188, AddWidth = 156;
-    const double HeadHeight = 92, SectionHeight = 64, RowHeight = 54, LgRowHeight = 70;
+    const double HeadHeight = 92, SectionHeight = 64, RowHeight = 54, LgRowHeight = 128;
 
     static readonly Section[] Sections = [Section.Triggers, Section.Video, Section.Output, Section.Mic, Section.Input, Section.Camera];
 
@@ -1045,10 +1045,13 @@ public partial class ProfilesPage : UserControl
         }
         panel.Children.Add(Switch("Auto on", options.PowerOn, v => Set(options with { PowerOn = v }),
             $"Turn the TV on when switching to {p.Name}"));
-        panel.Children.Add(Dropdown(
-            "When leaving: " + LeaveLabel(options.Leaving),
-            $"What happens to the TV when switching from {p.Name} to a profile that doesn't use it",
-            Enum.GetValues<LgLeave>().Select(l => (LeaveLabel(l), LeaveTip(l), l == options.Leaving, (Action)(() => Set(options.WithLeaving(l)))))));
+        // When switching to a profile that doesn't use the TV. One or the other, or neither (the TV is left as it is).
+        panel.Children.Add(new TextBlock { Text = "When leaving", FontSize = 11, Foreground = Res<Brush>("MutedBrush"), Margin = new Thickness(0, 4, 0, 0),
+            ToolTip = $"What happens to the TV when switching from {p.Name} to a profile that doesn't use it. Neither: it's left on the PC's input." });
+        panel.Children.Add(Switch("Auto off", options.Leaving == LgLeave.TurnOff, v => Set(options.WithLeaving(v ? LgLeave.TurnOff : LgLeave.Stay)),
+            "Turn the TV off"));
+        panel.Children.Add(Switch("Auto return", options.Leaving == LgLeave.AutoReturn, v => Set(options.WithLeaving(v ? LgLeave.AutoReturn : LgLeave.Stay)),
+            "Put the TV back the way it was: off if it was off, otherwise the input or app it was showing (HDMI 1, Netflix…)"));
         panel.Children.Add(Dropdown(
             options.HdmiInput is >= 1 and <= 4 ? $"Input: HDMI {options.HdmiInput}" : "Input: unchanged",
             "Switch the TV to this input when switching to this profile",
@@ -1076,20 +1079,6 @@ public partial class ProfilesPage : UserControl
         };
         return button;
     }
-
-    static string LeaveLabel(LgLeave leave) => leave switch
-    {
-        LgLeave.TurnOff => "turn it off",
-        LgLeave.PutBack => "put it back",
-        _ => "leave it",
-    };
-
-    static string? LeaveTip(LgLeave leave) => leave switch
-    {
-        LgLeave.TurnOff => "Turn the TV off",
-        LgLeave.PutBack => "Back the way it was before: off if it was off, otherwise the input or app it was showing (HDMI 1, Netflix…)",
-        _ => "Leave the TV on, on the PC's input",
-    };
 
     // ---------------- actions ----------------
 

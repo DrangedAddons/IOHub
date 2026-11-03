@@ -26,8 +26,8 @@ public sealed class LgTvLink
     /// <summary>An LG display someone said isn't a TV, so it isn't offered again.</summary>
     public bool NotATv { get; set; }
     /// <summary>
-    /// For "Put it back": how the TV was before IO Hub switched to it. "off", or the app that was showing
-    /// ("com.webos.app.hdmi1" for HDMI 1). Empty when there's nothing to put back. Saved, in case IO Hub restarts.
+    /// For Auto return: how the TV was before IO Hub switched to it. "off", or the app that was showing
+    /// ("com.webos.app.hdmi1" for HDMI 1). Empty when there's nothing to return to. Saved, in case IO Hub restarts.
     /// </summary>
     public string ReturnTo { get; set; } = "";
 

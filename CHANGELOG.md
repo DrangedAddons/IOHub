@@ -11,9 +11,9 @@
   and whenever it's on.
 - If LGTV Companion is installed, IO Hub asks it to turn the TV on as well, in case its route works where IO Hub's
   doesn't. It isn't needed.
-- **When leaving: leave it / turn it off / put it back.** Replaces *Auto off*. *Put it back* returns the TV to how it
-  was before IO Hub switched to it: off if it was off, otherwise the input or app it was showing (Apple TV on HDMI 1,
-  Netflix…). Profiles with *Auto off* on carry over as *turn it off*.
+- **Auto return.** A second choice under *When leaving*, next to *Auto off*. It returns the TV to how it was before
+  IO Hub switched to it: off if it was off, otherwise the input or app it was showing (Apple TV on HDMI 1,
+  Netflix…). Turn on one or the other; with neither, the TV is left on the PC's input.
 - Searching for TVs to pair asks from every network adapter. With a TV already paired, an empty search says "No other
   LG TVs found to pair" (the paired TV is reached by its address either way).
 - "Turn it on now" shows that it's working, and every step of turning a TV on goes to `switch.log`: its power state,

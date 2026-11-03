@@ -72,8 +72,8 @@ public enum LgLeave
     /// <summary>Leave the TV as it is.</summary>
     Stay,
     TurnOff,
-    /// <summary>Back the way it was before IO Hub switched to it: off if it was off, else its previous input or app.</summary>
-    PutBack,
+    /// <summary>"Auto return": back the way it was before IO Hub switched to it: off if it was off, else its previous input or app.</summary>
+    AutoReturn,
 }
 
 public static class ProfileColors

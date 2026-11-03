@@ -217,7 +217,7 @@ public sealed class ProfileSwitcher(DeviceHub hub, ProfileService profiles)
     }
 
     /// <summary>
-    /// Before a profile uses the TVs: notes how each one is (for "Put it back"), turns on the ones it should, sets
+    /// Before a profile uses the TVs: notes how each one is (for Auto return), turns on the ones it should, sets
     /// their input, and waits for Windows to see the ones that were off. Whether a TV needs turning on is the TV's
     /// call (its power state), not whether Windows still lists it: a TV in standby can stay listed.
     /// </summary>
@@ -231,7 +231,7 @@ public sealed class ProfileSwitcher(DeviceHub hub, ProfileService profiles)
             void Log(string s) => SwitchLog.Write($"  LG {NameOf(id)}: {s}");
 
             // Coming from a profile that already used this TV, it's showing the PC: what was there before is already noted.
-            if (options is { Leaving: LgLeave.PutBack } && previous?.Displays.Contains(id) != true)
+            if (options is { Leaving: LgLeave.AutoReturn } && previous?.Displays.Contains(id) != true)
                 await NoteReturn(tv, options, Log);
 
             // A restore turns a TV back on if the old setup used it; a profile only if it's set to.
@@ -244,7 +244,7 @@ public sealed class ProfileSwitcher(DeviceHub hub, ProfileService profiles)
             }
             if (options is { HdmiInput: >= 1 and <= 4 }) await SetInput(id, tv, options.HdmiInput, problems);
         }
-        profiles.SaveQuietly(); // MAC addresses learned, what to put back
+        profiles.SaveQuietly(); // MAC addresses learned, what to return to
 
         // Windows only sees the TV once it's on and the HDMI link is up, which can take a while.
         if (waitFor.Count == 0) return;
@@ -268,14 +268,14 @@ public sealed class ProfileSwitcher(DeviceHub hub, ProfileService profiles)
         var returnTo = state.Power is LgPower.Unreachable or LgPower.Standby ? "off" : state.AppId ?? "";
         if (options.HdmiInput is >= 1 and <= 4 && returnTo.Equals($"com.webos.app.hdmi{options.HdmiInput}", StringComparison.OrdinalIgnoreCase))
         {
-            log($"already on HDMI {options.HdmiInput}; keeping \"{(tv.ReturnTo == "" ? "nothing" : tv.ReturnTo)}\" to put back");
+            log($"already on HDMI {options.HdmiInput}; keeping \"{(tv.ReturnTo == "" ? "nothing" : tv.ReturnTo)}\" to return to");
             return;
         }
         tv.ReturnTo = returnTo;
-        log($"was {state.Power} ({state.State ?? "no answer"}), showing {state.AppId ?? "nothing"}; will put back \"{(returnTo == "" ? "nothing" : returnTo)}\"");
+        log($"was {state.Power} ({state.State ?? "no answer"}), showing {state.AppId ?? "nothing"}; will return to \"{(returnTo == "" ? "nothing" : returnTo)}\"");
     }
 
-    /// <summary>TVs the previous profile used and the next one doesn't: left, turned off, or put back as they were.</summary>
+    /// <summary>TVs the previous profile used and the next one doesn't: left, turned off, or returned to how they were.</summary>
     async Task PowerOffTvs(Profile previous, IEnumerable<string> keep, List<string> problems)
     {
         var keeping = keep.ToHashSet();
@@ -290,8 +290,8 @@ public sealed class ProfileSwitcher(DeviceHub hub, ProfileService profiles)
                 continue;
             }
             var returnTo = tv.ReturnTo;
-            if (returnTo == "") { SwitchLog.Write($"  LG {NameOf(id)}: nothing noted to put back, left as it is"); continue; }
-            SwitchLog.Write($"  LG {NameOf(id)}: put back \"{returnTo}\"");
+            if (returnTo == "") { SwitchLog.Write($"  LG {NameOf(id)}: nothing noted to return to, left as it is"); continue; }
+            SwitchLog.Write($"  LG {NameOf(id)}: return to \"{returnTo}\"");
             if (await LgWebOs.ReturnAsync(tv, returnTo) is { } error) problems.Add(error);
             tv.ReturnTo = "";
             profiles.SaveQuietly();
