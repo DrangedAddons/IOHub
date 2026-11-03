@@ -74,7 +74,13 @@ public sealed class UpdateChecker
         Changed?.Invoke();
         try
         {
-            await AppUpdater.ApplyAsync(release, startInTray, new Progress<double>(p => { Progress = p; Changed?.Invoke(); }));
+            await AppUpdater.ApplyAsync(release, startInTray, new Progress<double>(p =>
+            {
+                double percent = Math.Floor(p * 100) / 100;
+                if (percent == Progress) return;
+                Progress = percent;
+                Changed?.Invoke();
+            }));
             return true;
         }
         catch (Exception ex)

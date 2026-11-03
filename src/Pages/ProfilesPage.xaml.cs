@@ -39,6 +39,7 @@ public partial class ProfilesPage : UserControl
     bool _editingName, _rebuildPending;
     string? _activeId; // the profile the PC is in, for the column highlight
     ColumnDrag? _drag;
+    bool _stale;
 
     ProfileData _data => _profiles.Data;
 
@@ -53,6 +54,7 @@ public partial class ProfilesPage : UserControl
         _profiles.Changed += Rebuild; // triggers edited on the Triggers page
         IsVisibleChanged += (_, _) =>
         {
+            if (IsVisible && _stale) Rebuild();
             // The same setting is switched from the Devices page too.
             if (IsVisible && ShowDisabledSwitch.IsChecked != _settings.ShowDisabledDevices)
                 ShowDisabledSwitch.IsChecked = _settings.ShowDisabledDevices;
@@ -160,6 +162,9 @@ public partial class ProfilesPage : UserControl
 
     void Rebuild()
     {
+        // Hidden pages (including everything while the app sits in the tray) don't rebuild; they catch up when shown.
+        if (!IsVisible) { _stale = true; return; }
+        _stale = false;
         // Rebuilding would throw away a name that's halfway through being typed, a column mid-drag, or the colour picker.
         if (_editingName || _drag != null || _colorPopup?.IsOpen == true) { _rebuildPending = true; return; }
         _rebuildPending = false;
@@ -958,11 +963,8 @@ public partial class ProfilesPage : UserControl
 
     // ---------------- persistence ----------------
 
-    void Commit()
-    {
-        Save();
-        Rebuild();
-    }
+    // Save raises ProfileService.Changed, which this page listens to and rebuilds from; no second rebuild here.
+    void Commit() => Save();
 
     void Save()
     {

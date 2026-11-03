@@ -38,7 +38,11 @@ public partial class TriggersPage : UserControl
         (settings.TriggersLayout == "Cards" ? CardsLayout : RowsLayout).IsChecked = true;
         _profiles.Changed += Rebuild;
         _engine.StateChanged += Rebuild;
-        IsVisibleChanged += (_, _) => { if (!IsVisible) StopRecording(); };
+        IsVisibleChanged += (_, _) =>
+        {
+            if (!IsVisible) StopRecording();
+            else if (_stale) Rebuild();
+        };
         Rebuild();
     }
 
@@ -59,8 +63,13 @@ public partial class TriggersPage : UserControl
         Rebuild();
     }
 
+    bool _stale;
+
     void Rebuild()
     {
+        // Hidden pages (including everything while the app sits in the tray) don't rebuild; they catch up when shown.
+        if (!IsVisible) { _stale = true; return; }
+        _stale = false;
         if (_recording != null) return; // StopRecording rebuilds
         Cards.Children.Clear();
         // Rows are full width: a minimum item width wider than any window leaves one column.

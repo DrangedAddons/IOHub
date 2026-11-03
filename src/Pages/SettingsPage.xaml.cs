@@ -39,9 +39,28 @@ public partial class SettingsPage : UserControl
         _updates = updates;
         _installUpdate = installUpdate;
         _quit = quit;
-        _updates.Changed += () => { if (IsVisible) Rebuild(); };
-        _engine.StateChanged += () => { if (IsVisible) Rebuild(); };
+        _updates.Changed += OnUpdatesChanged;
+        // The engine also reports every trigger firing; only pausing changes anything shown here.
+        _engine.StateChanged += () => { if (IsVisible && _engine.Paused != _shownPaused) Rebuild(); };
         IsVisibleChanged += (_, _) => { if (IsVisible) Rebuild(); };
+        Rebuild();
+    }
+
+    TextBlock? _updateStatus;
+    object? _shownUpdateState;
+    bool _shownPaused;
+
+    // What the Updates rows look like, apart from the status text. Download progress only changes the text.
+    object UpdateState() => (_updates.Available?.Version, _updates.Busy, _updates.Error, _updates.Progress.HasValue, _updates.LastChecked);
+
+    void OnUpdatesChanged()
+    {
+        if (!IsVisible) return;
+        if (_updateStatus != null && Equals(UpdateState(), _shownUpdateState))
+        {
+            _updateStatus.Text = UpdateStatus();
+            return;
+        }
         Rebuild();
     }
 
@@ -49,6 +68,9 @@ public partial class SettingsPage : UserControl
 
     void Rebuild()
     {
+        _shownUpdateState = UpdateState();
+        _shownPaused = _engine.Paused;
+        _updateStatus = null;
         Sections.Children.Clear();
         Sections.Children.Add(StartupSection());
         Sections.Children.Add(SwitchingSection());
@@ -113,15 +135,6 @@ public partial class SettingsPage : UserControl
             return Section("Updates", "", rows);
         }
 
-        string status;
-        if (_updates.Progress is { } p) status = $"Downloading version {_updates.Available?.Version}… {p:P0}";
-        else if (_updates.Busy && _updates.Available == null && _updates.LastChecked == null) status = "Checking…";
-        else if (_updates.Busy) status = "Checking…";
-        else if (_updates.Error != null) status = _updates.Error;
-        else if (_updates.Available is { } r) status = $"Version {r.Version} is ready to install.";
-        else if (_updates.LastChecked is { } at) status = $"Up to date. Last checked at {at:t}.";
-        else status = "Not checked yet.";
-
         var buttons = new StackPanel { Orientation = Orientation.Horizontal };
         if (_updates.Available != null)
         {
@@ -141,7 +154,8 @@ public partial class SettingsPage : UserControl
             check.Click += async (_, _) => await _updates.CheckAsync();
             buttons.Children.Add(check);
         }
-        rows.Add(Row($"Version {AppUpdater.CurrentVersion}" + (AppUpdater.IsBeta ? " (beta)" : ""), status, buttons, warn: _updates.Error != null));
+        rows.Add(Row($"Version {AppUpdater.CurrentVersion}" + (AppUpdater.IsBeta ? " (beta)" : ""), UpdateStatus(), buttons,
+            warn: _updates.Error != null, hintRef: t => _updateStatus = t));
         rows.Add(Row("Check for updates automatically",
             "Looks once shortly after starting and then every six hours. One small request to GitHub each time.",
             Switch(_settings.CheckForUpdates, v => { _settings.CheckForUpdates = v; _settings.Save(); })));
@@ -159,6 +173,16 @@ public partial class SettingsPage : UserControl
             Switch(_settings.InstallUpdatesAutomatically, v => { _settings.InstallUpdatesAutomatically = v; _settings.Save(); },
                 enabled: _settings.CheckForUpdates)));
         return Section("Updates", "", rows);
+    }
+
+    string UpdateStatus()
+    {
+        if (_updates.Progress is { } p) return $"Downloading version {_updates.Available?.Version}… {p:P0}";
+        if (_updates.Busy) return "Checking…";
+        if (_updates.Error != null) return _updates.Error;
+        if (_updates.Available is { } r) return $"Version {r.Version} is ready to install.";
+        if (_updates.LastChecked is { } at) return $"Up to date. Last checked at {at:t}.";
+        return "Not checked yet.";
     }
 
     UIElement DataSection()
@@ -297,18 +321,21 @@ public partial class SettingsPage : UserControl
         return new Border { Style = Res<Style>("Card"), Padding = new Thickness(0, 0, 0, 4), Margin = new Thickness(0, 0, 12, 16), Child = stack };
     }
 
-    UIElement Row(string title, string hint, UIElement? control, bool warn = false)
+    /// <param name="hintRef">Receives the explanation line, for a row whose text changes in place.</param>
+    UIElement Row(string title, string hint, UIElement? control, bool warn = false, Action<TextBlock>? hintRef = null)
     {
         var grid = new Grid { Margin = new Thickness(20, 12, 20, 12) };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 24, 0) };
         text.Children.Add(new TextBlock { Text = title, FontWeight = FontWeights.SemiBold, FontSize = 13.5 });
-        text.Children.Add(new TextBlock
+        var hintBlock = new TextBlock
         {
             Text = hint, Style = Res<Style>("Muted"), TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.None,
             Margin = new Thickness(0, 3, 0, 0), Foreground = Res<Brush>(warn ? "WarnBrush" : "MutedBrush"),
-        });
+        };
+        text.Children.Add(hintBlock);
+        hintRef?.Invoke(hintBlock);
         grid.Children.Add(text);
         if (control != null)
         {

@@ -35,6 +35,7 @@ public partial class OverviewPage : UserControl
         _settings = settings;
         _hub.Refreshed += Rebuild;
         _profiles.Changed += Rebuild;
+        IsVisibleChanged += (_, _) => { if (IsVisible && _stale) Rebuild(); };
 
         Map.Layout = Enum.TryParse<TopologyLayout>(settings.OverviewLayout, out var layout) ? layout : TopologyLayout.Flow;
         (Map.Layout switch { TopologyLayout.Hub => HubLayout, TopologyLayout.Tree => TreeLayout, _ => FlowLayout }).IsChecked = true;
@@ -54,8 +55,13 @@ public partial class OverviewPage : UserControl
         _settings.Save();
     }
 
+    bool _stale;
+
     void Rebuild()
     {
+        // Hidden pages (including everything while the app sits in the tray) don't rebuild; they catch up when shown.
+        if (!IsVisible) { _stale = true; return; }
+        _stale = false;
         var profiles = _profiles.Profiles;
         var active = ProfileMatcher.Active(_profiles, _hub);
         List<UIElement> nodes = profiles.Count == 0

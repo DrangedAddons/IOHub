@@ -27,6 +27,7 @@ public partial class DevicesPage : UserControl
         IsVisibleChanged += (_, _) =>
         {
             UpdateMeterTimer();
+            if (IsVisible && _stale) Render();
             // The same setting is switched from the Profiles page too.
             if (IsVisible && ShowDisabledSwitch.IsChecked != _settings.ShowDisabledDevices)
                 ShowDisabledSwitch.IsChecked = _settings.ShowDisabledDevices;
@@ -44,8 +45,14 @@ public partial class DevicesPage : UserControl
 
     bool ShowDisabled => _settings.ShowDisabledDevices;
 
+    bool _stale;
+
     void Render()
     {
+        // Hidden pages (including everything while the app sits in the tray) don't rebuild; they catch up when shown.
+        if (!IsVisible) { _stale = true; return; }
+        _stale = false;
+
         ShowDisplays();
         ShowAudio();
         ShowInput();

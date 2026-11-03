@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2
+- **Switches stop replaying their slide.** A switch now only animates when you flip it; before, every switch on a page
+  slid back into place whenever the page refreshed, which made the page look like it was constantly reloading.
+- **Much less work in the background.** Downloading an update refreshed the Settings page hundreds of times; now only
+  the progress text changes, once per percent. Pages that aren't on screen (all of them, while the app is in the
+  tray) no longer redraw when devices or triggers change; they catch up when you open them.
+
 ## 0.1.1
 - **Beta updates.** Settings → Updates has a new "Get beta updates" switch. With it on, the app also offers
   pre-release versions to try new features early. Leave it off to get full releases only; if you turn it off while on

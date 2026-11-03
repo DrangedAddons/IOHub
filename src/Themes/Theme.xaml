@@ -323,6 +323,23 @@
             <Setter.Value>
                 <ControlTemplate TargetType="CheckBox">
                     <StackPanel Orientation="Horizontal" Background="Transparent">
+                        <!-- The thumb's slide is a visual state, not a trigger animation: WPF applies the starting
+                             state without transitions, so a switch created already on appears in place instead of
+                             replaying the slide every time its page is rebuilt. Only a real flip animates. -->
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CheckStates">
+                                <VisualStateGroup.Transitions>
+                                    <VisualTransition GeneratedDuration="0:0:0.15"/>
+                                </VisualStateGroup.Transitions>
+                                <VisualState x:Name="Checked">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="Thumb" Storyboard.TargetProperty="RenderTransform.X" To="16" Duration="0"/>
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Unchecked"/>
+                                <VisualState x:Name="Indeterminate"/>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
                         <Border x:Name="Track" Width="36" Height="20" CornerRadius="10" BorderThickness="1"
                                 BorderBrush="#3D4350" Background="#1D2028" VerticalAlignment="Center">
                             <Ellipse x:Name="Thumb" Width="12" Height="12" Fill="{StaticResource MutedBrush}"
@@ -345,20 +362,6 @@
                             <Setter TargetName="Track" Property="Background" Value="{StaticResource AccentBrush}"/>
                             <Setter TargetName="Track" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
                             <Setter TargetName="Thumb" Property="Fill" Value="#0E1014"/>
-                            <Trigger.EnterActions>
-                                <BeginStoryboard>
-                                    <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="Thumb" Storyboard.TargetProperty="RenderTransform.X" To="16" Duration="0:0:0.15"/>
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </Trigger.EnterActions>
-                            <Trigger.ExitActions>
-                                <BeginStoryboard>
-                                    <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="Thumb" Storyboard.TargetProperty="RenderTransform.X" To="0" Duration="0:0:0.15"/>
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </Trigger.ExitActions>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
