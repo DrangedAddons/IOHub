@@ -19,7 +19,7 @@
   - It pauses while a game or other fullscreen app is in front (games still see the controller), unless that's
     switched off. Four pointer speeds.
   - Turn off Steam's controller mouse (Guide Button Chord Layout and Desktop Layout) so the two don't fight.
-- **Devices page shows what can be changed.** Each tab has a functions table: *Controller functions* (Input), *TV
+- **Devices page shows what can be changed** when *Show functions* (top right) is on. Each tab has a functions table: *Controller functions* (Input), *TV
   functions* (Video, for paired LG TVs) and *Sound functions* (Audio, sound output and microphones), grouped by device.
   Every row is one function, with buttons to do it now and its triggers on the right (click one to open it).
   *Add a trigger* opens a new trigger on the Triggers page with the device already picked. Sound devices also have

@@ -41,7 +41,7 @@ public partial class DevicesPage
     void ShowControllerFeatures()
     {
         ControllerFeatures.Children.Clear();
-        if (_features == null) return;
+        if (_features == null || !_settings.ShowDeviceFunctions) return;
         var mouse = _features.Mouse;
         var pads = _features.All().Where(f => f.Section == "Controllers").ToList();
 
@@ -108,7 +108,7 @@ public partial class DevicesPage
     void ShowTvFeatures()
     {
         TvFeatures.Children.Clear();
-        if (_features == null) return;
+        if (_features == null || !_settings.ShowDeviceFunctions) return;
         var tvs = _features.All().Where(f => f.Section == "TVs").GroupBy(f => f.DeviceId).ToList();
         if (tvs.Count == 0) return;
 
@@ -123,7 +123,7 @@ public partial class DevicesPage
     void ShowAudioFeatures()
     {
         AudioFeatures.Children.Clear();
-        if (_features == null) return;
+        if (_features == null || !_settings.ShowDeviceFunctions) return;
         var sound = _features.All().Where(f => f.Section is "Sound output" or "Microphones").GroupBy(f => f.DeviceId).ToList();
         if (sound.Count == 0) return;
         var stack = new StackPanel();

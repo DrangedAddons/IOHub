@@ -273,6 +273,10 @@
                            Foreground="{StaticResource MutedBrush}" Margin="0,6,0,0" TextWrapping="Wrap"/>
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,0,0">
+            <CheckBox x:Name="ShowFunctionsSwitch" Style="{StaticResource Switch}" Content="Show functions"
+                      VerticalAlignment="Center" Margin="0,0,18,0" WindowChrome.IsHitTestVisibleInChrome="True"
+                      Checked="ShowFunctions_Changed" Unchecked="ShowFunctions_Changed"
+                      ToolTip="What IO Hub can change on each device (mouse mode, TV power, mute…) and the triggers that do it"/>
             <CheckBox x:Name="ShowDisabledSwitch" Style="{StaticResource Switch}" Content="Show disabled devices"
                       VerticalAlignment="Center" Margin="0,0,18,0" WindowChrome.IsHitTestVisibleInChrome="True"
                       Checked="ShowDisabled_Changed" Unchecked="ShowDisabled_Changed"
