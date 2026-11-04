@@ -81,7 +81,8 @@ public partial class ProfilesPage : UserControl
         switch (section)
         {
             case Section.Triggers:
-                foreach (var t in _data.Triggers.Where(t => t.Kind != TriggerKind.Unset))
+                // Triggers that change a device rather than switch profile have nothing to pick here.
+                foreach (var t in _data.Triggers.Where(t => t.Kind != TriggerKind.Unset && !t.ChangesDevice))
                 {
                     var (kindTitle, kindGlyph, _) = TriggersPage.KindInfo(t.Kind);
                     // Integrations are named after what they watch, so the detail says what sort of trigger it is instead.

@@ -102,6 +102,40 @@ public sealed class AudioService : IDisposable
         };
     }
 
+    /// <summary>Whether the device is muted, or null if it can't be read (unplugged, disabled).</summary>
+    public bool? IsMuted(string id)
+    {
+        var volume = Volume(id);
+        if (volume == null) return null;
+        try { return volume.GetMute(out bool muted) == 0 ? muted : null; }
+        finally { Marshal.ReleaseComObject(volume); }
+    }
+
+    /// <summary>Mutes or unmutes the device. Returns an error message, or null.</summary>
+    public string? SetMute(string id, bool mute)
+    {
+        var volume = Volume(id);
+        if (volume == null) return "That device isn't available.";
+        try
+        {
+            var context = Guid.Empty;
+            int hr = volume.SetMute(mute, ref context);
+            return hr == 0 ? null : $"Windows refused (0x{hr:X8}).";
+        }
+        finally { Marshal.ReleaseComObject(volume); }
+    }
+
+    IAudioEndpointVolume? Volume(string id)
+    {
+        if (_enumerator.GetDevice(id, out var device) != 0) return null;
+        try
+        {
+            var iid = typeof(IAudioEndpointVolume).GUID;
+            return device.Activate(ref iid, ClsctxAll, IntPtr.Zero, out var obj) == 0 ? obj as IAudioEndpointVolume : null;
+        }
+        finally { Marshal.ReleaseComObject(device); }
+    }
+
     string? DefaultId(int dataFlow, int role)
     {
         // E_NOTFOUND when there's no device of that kind at all.
@@ -214,6 +248,25 @@ public sealed class AudioService : IDisposable
     interface IAudioMeterInformation
     {
         [PreserveSig] int GetPeakValue(out float peak);
+    }
+
+    // Only SetMute and GetMute are called; the methods before them hold their places in the vtable.
+    [ComImport, Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface IAudioEndpointVolume
+    {
+        [PreserveSig] int RegisterControlChangeNotify(IntPtr notify);
+        [PreserveSig] int UnregisterControlChangeNotify(IntPtr notify);
+        [PreserveSig] int GetChannelCount(out uint count);
+        [PreserveSig] int SetMasterVolumeLevel(float levelDb, ref Guid context);
+        [PreserveSig] int SetMasterVolumeLevelScalar(float level, ref Guid context);
+        [PreserveSig] int GetMasterVolumeLevel(out float levelDb);
+        [PreserveSig] int GetMasterVolumeLevelScalar(out float level);
+        [PreserveSig] int SetChannelVolumeLevel(uint channel, float levelDb, ref Guid context);
+        [PreserveSig] int SetChannelVolumeLevelScalar(uint channel, float level, ref Guid context);
+        [PreserveSig] int GetChannelVolumeLevel(uint channel, out float levelDb);
+        [PreserveSig] int GetChannelVolumeLevelScalar(uint channel, out float level);
+        [PreserveSig] int SetMute([MarshalAs(UnmanagedType.Bool)] bool mute, ref Guid context);
+        [PreserveSig] int GetMute([MarshalAs(UnmanagedType.Bool)] out bool mute);
     }
 
     [ComImport, Guid("7991EEC9-7E89-4D85-8390-6C703CEC60C0"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]

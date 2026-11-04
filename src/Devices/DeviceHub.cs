@@ -51,6 +51,19 @@ public sealed class DeviceHub : IDisposable
         }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(1.5));
     }
 
+    /// <summary>Whether a sound device is muted; null if unknown.</summary>
+    public bool? IsMuted(string audioId) => _audio?.IsMuted(audioId);
+
+    /// <summary>Mutes or unmutes a sound device. Returns an error message, or null.</summary>
+    public string? SetMute(string audioId, bool mute) => _audio == null ? "Sound devices couldn't be read." : _audio.SetMute(audioId, mute);
+
+    /// <summary>Makes a sound device the Windows default. Returns an error message, or null.</summary>
+    public string? MakeDefaultAudio(string audioId)
+    {
+        try { AudioSwitcher.SetDefault(audioId); ScheduleRefresh(); return null; }
+        catch (Exception ex) { return ex.Message; }
+    }
+
     public void ScheduleRefresh()
     {
         _debounce.Stop();

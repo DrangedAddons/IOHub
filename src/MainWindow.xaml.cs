@@ -22,6 +22,8 @@ public partial class MainWindow : Window
     readonly TriggersPage _triggersPage;
     readonly SettingsPage _settingsPage;
     readonly ProfileSwitcher _switcher;
+    readonly ControllerMouse _mouse;
+    readonly FeatureService _features;
     readonly TriggerEngine _engine;
     readonly UpdateChecker _updates;
     readonly Toast _toast = new();
@@ -44,14 +46,19 @@ public partial class MainWindow : Window
         };
         _switcher.Notice += (title, detail, color) => { if (_settings.ShowNotices) _toast.Show(title, detail, color: color); };
         _hub.Refreshed += _switcher.Observe;
-        _engine = new TriggerEngine(_profiles, _switcher, _toast, Dispatcher, () => ProfileMatcher.Active(_profiles, _hub));
+        _mouse = new ControllerMouse(_settings);
+        _features = new FeatureService(_hub, _profiles, _switcher, _mouse);
+        _engine = new TriggerEngine(_profiles, _switcher, _features, _toast, Dispatcher, () => ProfileMatcher.Active(_profiles, _hub));
 
         _overviewPage = new OverviewPage(_hub, _profiles, _settings);
         _overviewPage.OpenProfiles += () => ProfilesNav.IsChecked = true;
         _overviewPage.SwitchRequested += p => _ = _switcher.SwitchTo(p);
-        _devicesPage = new DevicesPage(_hub, _settings);
+        _devicesPage = new DevicesPage(_hub, _settings, _features, _profiles);
         _profilesPage = new ProfilesPage(_hub, _profiles, _settings) { TvWanted = _switcher.StopTurnOff };
-        _triggersPage = new TriggersPage(_profiles, _engine, _settings);
+        _triggersPage = new TriggersPage(_profiles, _engine, _features, _settings);
+        // Devices page → Triggers page: a new trigger for a device feature, or an existing one.
+        _devicesPage.AddTrigger += (f, action, value) => { TriggersNav.IsChecked = true; _triggersPage.AddForFeature(f, action, value); };
+        _devicesPage.OpenTrigger += id => { TriggersNav.IsChecked = true; _triggersPage.Open(id); };
         _updates = new UpdateChecker(_settings, Dispatcher);
         _updates.Found += OnUpdateFound;
         _settingsPage = new SettingsPage(_settings, _profiles, _engine, _hub, _updates, startInTray => _ = InstallUpdate(startInTray), Quit);
@@ -156,6 +163,7 @@ public partial class MainWindow : Window
         if (_quitting) return;
         _quitting = true;
         _engine.Dispose();
+        _mouse.Dispose();
         _tray.Dispose();
         _hub.Dispose();
         _toast.Close();

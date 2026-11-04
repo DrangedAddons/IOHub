@@ -28,7 +28,20 @@ public enum GestureKind
     Hold = 2,
     /// <summary>One press. Controller combinations only: a keyboard combo is a Hotkey.</summary>
     Press = 3,
+    /// <summary>On while held, off when let go. Only for triggers that change an on/off device feature.</summary>
+    WhileHeld = 4,
 }
+
+/// <summary>What a trigger does when it fires.</summary>
+public enum ThenKind
+{
+    /// <summary>Switch to a profile (or, for pickers, the profile picked).</summary>
+    Profile = 0,
+    /// <summary>Change one feature of one device: mouse mode on, TV off, mic muted…</summary>
+    Device = 1,
+}
+
+public enum FeatureAction { Toggle = 0, On = 1, Off = 2, Set = 3, Run = 4 }
 
 [Flags]
 public enum KeyMods { None = 0, Ctrl = 1, Alt = 2, Shift = 4, Win = 8 }
@@ -50,6 +63,19 @@ public sealed class Trigger
 
     /// <summary>Controller triggers: the buttons held together, as <see cref="ControllerButtons"/> flags.</summary>
     public int Buttons { get; set; }
+
+    public ThenKind Then { get; set; }
+    /// <summary>Device triggers: which device (see <see cref="Devices.DeviceFeature.DeviceId"/>).</summary>
+    public string? DeviceId { get; set; }
+    /// <summary>The device's name when it was picked, to show while it isn't connected.</summary>
+    public string? DeviceName { get; set; }
+    /// <summary>Device triggers: which of the device's features ("mouse", "power", "mute"…).</summary>
+    public string? Feature { get; set; }
+    public FeatureAction Action { get; set; }
+    /// <summary>For <see cref="FeatureAction.Set"/>: the choice's value ("2" for HDMI 2).</summary>
+    public string? Value { get; set; }
+
+    public bool ChangesDevice => Then == ThenKind.Device && !IsPicker;
 
     /// <summary>
     /// Key triggers: firing again while switched puts the previous setup back (a toggle).

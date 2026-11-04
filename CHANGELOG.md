@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.5.0
+- **Triggers can change a device.** A trigger's *Then* is now either *Switch to a profile* or *Change a device*: pick
+  the kind of device, the device, the feature and what to do with it. To start with:
+  - Xbox controllers: Mouse mode (toggle, on, off).
+  - Paired LG TVs: Power (toggle, on, off) and Input (HDMI 1-4).
+  - Sound output and microphones: Mute (toggle, mute, unmute) and Make it the default.
+
+  The list comes from what's connected, so a device only offers what it can do. Big Picture triggers can change a
+  device too, with *Undo it when Big Picture closes*.
+- **While held.** A new gesture for keys and controller buttons, offered when the trigger changes something that's
+  on or off: on while held, back off when let go (like Steam's hold-the-Xbox-button mouse).
+- **Mouse mode.** An Xbox controller drives the mouse, for the desktop on a TV. Switch it on under Devices → Input →
+  Mouse mode ("Let IO Hub control the mouse with Xbox controllers"), then turn it on and off with a trigger.
+  - Left stick moves the pointer (hold LT for slow and precise), right stick scrolls, A/B/X click left/right/middle,
+    LB/RB are back/forward, the D-pad is the arrow keys, Menu is Enter, View is Esc and Y opens the on-screen keyboard.
+  - Menu, View and Y act when let go and only on their own, so a View + Menu trigger doesn't also press Esc and Enter.
+  - It pauses while a game or other fullscreen app is in front (games still see the controller), unless that's
+    switched off. Four pointer speeds.
+  - Turn off Steam's controller mouse (Guide Button Chord Layout and Desktop Layout) so the two don't fight.
+- **Devices page shows what can be changed.** Mouse mode under the controllers, a TV controls card for paired LG TVs
+  (with buttons to do it now), and a menu on each sound device. Each lists its triggers (click one to open it) and
+  has *Add a trigger*, which opens a new trigger on the Triggers page with the device already picked.
+
 ## 0.4.1
 - **A TV turned off stays off.** Auto return switched the TV back to its old input and turned it off straight away.
   Switching inputs wakes the device there over HDMI-CEC (an Apple TV, say); one still waking when the TV went off

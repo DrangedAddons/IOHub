@@ -25,8 +25,11 @@ public sealed class KeyGestureDetector
     int _tapCount;
     long _lastTapUp;
     long _pendingDeadline = -1;               // waiting to see if a double tap becomes a triple tap
+    readonly Dictionary<int, List<object>> _whileHeld = []; // keys held down for "while held" triggers, and those triggers
 
     public event Action<object>? Fired;
+    /// <summary>A "while held" trigger's key was let go.</summary>
+    public event Action<object>? Released;
 
     public void SetEntries(IEnumerable<Entry> entries)
     {
@@ -63,6 +66,16 @@ public sealed class KeyGestureDetector
                 return true;
             }
 
+            // "While held" starts on the press and ends on the release (below).
+            if (mods == KeyMods.None)
+                foreach (var e in _entries)
+                {
+                    if (e.Kind == TriggerKind.Hotkey || e.Gesture != GestureKind.WhileHeld || e.Key != vk) continue;
+                    if (!_whileHeld.TryGetValue(vk, out var tags)) _whileHeld[vk] = tags = [];
+                    tags.Add(e.Tag);
+                    Fired?.Invoke(e.Tag);
+                }
+
             // Pressing anything marks keys already held as "used" (Ctrl in Ctrl+C isn't a tap of Ctrl).
             foreach (var held in _down) if (held != vk) _used.Add(held);
             _downAt[vk] = now;
@@ -75,6 +88,7 @@ public sealed class KeyGestureDetector
         }
 
         _down.Remove(vk);
+        if (_whileHeld.Remove(vk, out var heldTags)) foreach (var tag in heldTags) Released?.Invoke(tag);
         if (_swallowed.Remove(vk)) return true;
 
         bool used = _used.Remove(vk);
@@ -120,6 +134,9 @@ public sealed class KeyGestureDetector
     /// <summary>Forget held keys, e.g. after the hook was paused; a release we never saw would leave a key stuck.</summary>
     public void Reset()
     {
+        var held = _whileHeld.Values.SelectMany(t => t).ToList();
+        _whileHeld.Clear();
+        foreach (var tag in held) Released?.Invoke(tag);
         _down.Clear();
         _swallowed.Clear();
         _downAt.Clear();
@@ -136,7 +153,7 @@ public sealed class KeyGestureDetector
     }
 
     Entry? TapEntry(int vk, int count) => _entries.FirstOrDefault(e => e.Key == vk && IsTap(e) && TapCount(e) == count);
-    static bool IsTap(Entry e) => e.Kind != TriggerKind.Hotkey && e.Gesture != GestureKind.Hold;
+    static bool IsTap(Entry e) => e.Kind != TriggerKind.Hotkey && e.Gesture is GestureKind.DoubleTap or GestureKind.TripleTap;
     static bool IsHold(Entry e) => e.Kind != TriggerKind.Hotkey && e.Gesture == GestureKind.Hold;
     static int TapCount(Entry e) => e.Gesture == GestureKind.TripleTap ? 3 : 2;
 }

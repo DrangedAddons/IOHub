@@ -83,11 +83,15 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
+                    <Button Grid.Column="3" Grid.RowSpan="2" Style="{StaticResource IconButton}" Content="&#xE712;" VerticalAlignment="Top" Margin="4,0,-4,0"
+                            ToolTip="Change it now, or set up a trigger" Tag="{Binding Id}" Click="AudioMore_Click"
+                            Visibility="{Binding IsActive, Converter={StaticResource BoolToVis}}"/>
                     <Border x:Name="Tile" Style="{StaticResource IconTileSmall}" VerticalAlignment="Top" Grid.RowSpan="2">
                         <TextBlock Text="{Binding Glyph}" Style="{StaticResource Icon}"/>
                     </Border>
@@ -353,6 +357,8 @@
                         <ItemsPanelTemplate><ui:AdaptiveGrid MinItemWidth="340"/></ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                 </ItemsControl>
+                <!-- Paired LG TVs and what can be changed on them; filled in code. -->
+                <StackPanel x:Name="TvFeatures" Margin="0,0,12,0"/>
             </StackPanel>
         </ScrollViewer>
 
@@ -413,6 +419,8 @@
                         </StackPanel>
                     </StackPanel>
                 </Border>
+                <!-- Mouse mode for Xbox controllers; filled in code. -->
+                <StackPanel x:Name="ControllerFeatures" Margin="0,12,12,0"/>
 
                 <ui:AdaptiveGrid MinItemWidth="400" Margin="0,28,12,0">
                     <Border Style="{StaticResource Card}" Padding="10,16,10,10">

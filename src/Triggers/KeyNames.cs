@@ -37,6 +37,7 @@ public static class KeyNames
     {
         GestureKind.DoubleTap => $"Double-tap {Of(vk)}",
         GestureKind.TripleTap => $"Triple-tap {Of(vk)}",
+        GestureKind.WhileHeld => $"While holding {Of(vk)}",
         _ => $"Hold {Of(vk)} {holdMs / 1000.0:0.#} s",
     };
 

@@ -50,6 +50,7 @@ public static class ControllerButtons
         GestureKind.Press => $"Press {Combo(buttons)}",
         GestureKind.DoubleTap => $"Double-tap {Combo(buttons)}",
         GestureKind.TripleTap => $"Triple-tap {Combo(buttons)}",
+        GestureKind.WhileHeld => $"While holding {Combo(buttons)}",
         _ => $"Hold {Combo(buttons)} {holdMs / 1000.0:0.#} s",
     };
 }
@@ -64,7 +65,21 @@ public static class XInputPad
     public static bool TryRead(int slot, out int buttons)
     {
         buttons = 0;
-        XInputState state;
+        if (!TryReadState(slot, out var state)) return false;
+        buttons = ButtonsOf(state);
+        return true;
+    }
+
+    static int ButtonsOf(XInputState state)
+    {
+        int buttons = state.Buttons;
+        if (state.LeftTrigger > 127) buttons |= ControllerButtons.LT;
+        if (state.RightTrigger > 127) buttons |= ControllerButtons.RT;
+        return buttons;
+    }
+
+    static bool TryReadState(int slot, out XInputState state)
+    {
         uint result;
         // The undocumented ordinal 100 is XInputGetState plus the Xbox (Guide) button. Every Windows 10/11 xinput1_4 has it.
         if (!_noGuide)
@@ -73,10 +88,22 @@ public static class XInputPad
             catch (EntryPointNotFoundException) { _noGuide = true; result = XInputGetState((uint)slot, out state); }
         }
         else result = XInputGetState((uint)slot, out state);
-        if (result != 0) return false;
-        buttons = state.Buttons;
-        if (state.LeftTrigger > 127) buttons |= ControllerButtons.LT;
-        if (state.RightTrigger > 127) buttons |= ControllerButtons.RT;
+        return result == 0;
+    }
+
+    /// <summary>One controller's buttons and sticks.</summary>
+    public readonly record struct Pad(int Buttons, short LeftX, short LeftY, short RightX, short RightY)
+    {
+        public int LeftMagnitude => Math.Abs((int)LeftX) + Math.Abs((int)LeftY);
+        public int RightMagnitude => Math.Abs((int)RightX) + Math.Abs((int)RightY);
+    }
+
+    /// <summary>Buttons and sticks of one controller. False if nothing's in that slot.</summary>
+    public static bool TryReadPad(int slot, out Pad pad)
+    {
+        pad = default;
+        if (!TryReadState(slot, out var state)) return false;
+        pad = new Pad(ButtonsOf(state), state.ThumbLX, state.ThumbLY, state.ThumbRX, state.ThumbRY);
         return true;
     }
 
@@ -126,6 +153,8 @@ public sealed class ControllerGestures
     }
 
     public event Action<object>? Fired;
+    /// <summary>A "while held" combination was let go.</summary>
+    public event Action<object>? Released;
 
     public bool HasEntries => _combos.Count > 0;
 
@@ -146,8 +175,8 @@ public sealed class ControllerGestures
 
     void Configure(Pad pad)
     {
-        pad.Detector.SetEntries(_detectorEntries);
         pad.Detector.Reset();
+        pad.Detector.SetEntries(_detectorEntries);
         pad.Down.Clear();
     }
 
@@ -158,6 +187,7 @@ public sealed class ControllerGestures
         {
             pad = new Pad();
             pad.Detector.Fired += tag => Fired?.Invoke(tag);
+            pad.Detector.Released += tag => Released?.Invoke(tag);
             Configure(pad);
             _pads[slot] = pad;
         }

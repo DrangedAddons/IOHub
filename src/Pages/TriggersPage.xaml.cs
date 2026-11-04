@@ -5,6 +5,7 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using IOHub.Devices;
 using IOHub.Profiles;
 using IOHub.Triggers;
 using Trigger = IOHub.Triggers.Trigger;
@@ -19,6 +20,7 @@ public partial class TriggersPage : UserControl
 {
     readonly ProfileService _profiles;
     readonly TriggerEngine _engine;
+    readonly FeatureService _features;
     readonly AppSettings _settings;
     Recording? _recording;
     string? _scrollTo;
@@ -30,11 +32,12 @@ public partial class TriggersPage : UserControl
 
     List<Trigger> AllTriggers => _profiles.Data.Triggers;
 
-    public TriggersPage(ProfileService profiles, TriggerEngine engine, AppSettings settings)
+    public TriggersPage(ProfileService profiles, TriggerEngine engine, FeatureService features, AppSettings settings)
     {
         InitializeComponent();
         _profiles = profiles;
         _engine = engine;
+        _features = features;
         _settings = settings;
         (settings.TriggersLayout == "Cards" ? CardsLayout : RowsLayout).IsChecked = true;
         _profiles.Changed += Rebuild;
@@ -333,8 +336,11 @@ public partial class TriggersPage : UserControl
         {
             TriggerKind.Unset => "Choose what sets it off",
             TriggerKind.ProfilePicker or TriggerKind.ControllerPicker => KeyNames.Describe(t),
-            TriggerKind.SteamBigPicture => target == null ? "Not linked to a profile"
+            TriggerKind.SteamBigPicture when !t.ChangesDevice => target == null ? "Not linked to a profile"
                 : $"Switches to {target.Name} while it's open" + (t.SwitchBack ? ", then reverts" : ""),
+            _ when t.ChangesDevice => t.Kind == TriggerKind.SteamBigPicture
+                ? $"While it's open → {_features.Describe(t, withDevice: true)}" + (t.SwitchBack ? ", undone when it closes" : "")
+                : $"{KeyNames.Describe(t)} → {_features.Describe(t, withDevice: true)}",
             _ => target == null ? KeyNames.Describe(t)
                 : $"{KeyNames.Describe(t)} → {target.Name}" + (t.SwitchBack ? " · press again to go back" : ""),
         };
@@ -346,7 +352,7 @@ public partial class TriggersPage : UserControl
         if (t.Kind != TriggerKind.Unset)
         {
             var test = MenuItem("Try it now", "", () => _ = _engine.Test(t));
-            test.IsEnabled = t.IsPicker ? _profiles.Profiles.Count > 0 : t.ProfileId != null;
+            test.IsEnabled = t.IsPicker ? _profiles.Profiles.Count > 0 : t.ChangesDevice ? t.Feature != null : t.ProfileId != null;
             menu.Items.Add(test);
             menu.Items.Add(MenuItem("Change type", "", () =>
             {
@@ -424,6 +430,8 @@ public partial class TriggersPage : UserControl
         var row = new StackPanel { Orientation = Orientation.Horizontal };
         var choices = new List<(GestureKind, string)> { (GestureKind.DoubleTap, "Double tap"), (GestureKind.TripleTap, "Triple tap"), (GestureKind.Hold, "Hold") };
         if (controller) choices.Insert(0, (GestureKind.Press, "Press"));
+        // On while held, off when let go: only makes sense for something that's on or off.
+        if (t.ChangesDevice && _features.Find(t.DeviceId, t.Feature) is { Kind: FeatureKind.Toggle }) choices.Add((GestureKind.WhileHeld, "While held"));
         foreach (var (g, label) in choices)
         {
             var rb = new RadioButton
@@ -672,11 +680,137 @@ public partial class TriggersPage : UserControl
             return panel;
         }
 
-        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        panel.Children.Add(ThenChoice(t));
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
+        if (t.ChangesDevice)
+        {
+            row.Children.Add(FeatureButton(t));
+            panel.Children.Add(row);
+            if (t.Gesture == GestureKind.WhileHeld) panel.Children.Add(Note("On while held, back off when let go."));
+            return panel;
+        }
         row.Children.Add(new TextBlock { Text = "Switch to", FontSize = 13.5, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) });
         row.Children.Add(ProfileButton(t));
         panel.Children.Add(row);
         return panel;
+    }
+
+    /// <summary>Switch to a profile, or change something about one device.</summary>
+    UIElement ThenChoice(Trigger t)
+    {
+        var box = new Border
+        {
+            Background = Res<Brush>("SurfaceBrush"), BorderBrush = Res<Brush>("LineBrush"), BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10), Padding = new Thickness(3), HorizontalAlignment = HorizontalAlignment.Left,
+        };
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        foreach (var (then, label) in new[] { (ThenKind.Profile, "Switch to a profile"), (ThenKind.Device, "Change a device") })
+        {
+            var rb = new RadioButton
+            {
+                Style = Res<Style>("SegTab"), GroupName = "then-" + t.Id, IsChecked = t.Then == then,
+                Content = new TextBlock { Text = label, FontWeight = FontWeights.SemiBold, FontSize = 12.5 },
+            };
+            rb.Checked += (_, _) =>
+            {
+                if (t.Then == then) return;
+                t.Then = then;
+                if (then == ThenKind.Device) { t.ProfileId = null; t.SwitchBack = false; }
+                else if (t.Gesture == GestureKind.WhileHeld) t.Gesture = t.UsesController ? GestureKind.Hold : GestureKind.DoubleTap;
+                Save();
+            };
+            row.Children.Add(rb);
+        }
+        box.Child = row;
+        return box;
+    }
+
+    /// <summary>
+    /// The device feature a trigger changes, picked from a menu of what's connected: kind of device → device →
+    /// feature → what to do with it.
+    /// </summary>
+    Button FeatureButton(Trigger t)
+    {
+        var feature = _features.Find(t.DeviceId, t.Feature);
+        var content = new StackPanel { Orientation = Orientation.Horizontal };
+        if (t.Feature == null)
+            content.Children.Add(new TextBlock { Text = "Pick a device and what to change", Foreground = Res<Brush>("WarnBrush") });
+        else
+        {
+            content.Children.Add(new TextBlock { Text = feature?.DeviceName ?? t.DeviceName ?? "Device", FontWeight = FontWeights.SemiBold });
+            if (feature == null)
+                content.Children.Add(new TextBlock { Text = "  (not connected)", Foreground = Res<Brush>("WarnBrush") });
+            content.Children.Add(new TextBlock { Text = "  ›  " + _features.Describe(t, withDevice: false), Foreground = Res<Brush>("MutedBrush") });
+        }
+        content.Children.Add(new TextBlock { Text = "\uE70D", FontFamily = Res<FontFamily>("IconFont"), FontSize = 9, Margin = new Thickness(10, 1, 0, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = Res<Brush>("MutedBrush") });
+
+        var button = new Button { Style = Res<Style>("GhostButton"), Padding = new Thickness(12, 6, 12, 6), Content = content };
+        button.Click += (_, _) =>
+        {
+            var menu = new ContextMenu { PlacementTarget = button, Placement = PlacementMode.Bottom };
+            bool whileHeld = t.Gesture == GestureKind.WhileHeld;
+            var all = _features.All().Where(f => !whileHeld || f.Kind == FeatureKind.Toggle).ToList();
+            foreach (var section in all.GroupBy(f => f.Section))
+            {
+                var sectionItem = new MenuItem { Header = section.Key };
+                foreach (var device in section.GroupBy(f => f.DeviceId))
+                {
+                    var deviceItem = new MenuItem { Header = device.First().DeviceName, FontWeight = device.Key == t.DeviceId ? FontWeights.SemiBold : FontWeights.Normal };
+                    foreach (var f in device)
+                    {
+                        var featureItem = new MenuItem { Header = f.Title, FontWeight = f.DeviceId == t.DeviceId && f.Id == t.Feature ? FontWeights.SemiBold : FontWeights.Normal };
+                        var actions = whileHeld ? [(FeatureAction.On, (string?)null, $"{f.OnLabel} while held")] : f.Actions.ToList();
+                        foreach (var (action, value, label) in actions)
+                        {
+                            var item = new MenuItem
+                            {
+                                Header = label,
+                                FontWeight = f.DeviceId == t.DeviceId && f.Id == t.Feature && action == t.Action && value == t.Value ? FontWeights.SemiBold : FontWeights.Normal,
+                            };
+                            item.Click += (_, _) => { PickFeature(t, f, action, value); Save(); };
+                            featureItem.Items.Add(item);
+                        }
+                        deviceItem.Items.Add(featureItem);
+                    }
+                    sectionItem.Items.Add(deviceItem);
+                }
+                menu.Items.Add(sectionItem);
+            }
+            if (menu.Items.Count == 0) menu.Items.Add(new MenuItem { Header = "Nothing that can be changed is connected", IsEnabled = false });
+            menu.IsOpen = true;
+        };
+        return button;
+    }
+
+    static void PickFeature(Trigger t, DeviceFeature f, FeatureAction action, string? value)
+    {
+        t.Then = ThenKind.Device;
+        t.DeviceId = f.DeviceId;
+        t.DeviceName = f.DeviceName;
+        t.Feature = f.Id;
+        t.Action = action;
+        t.Value = value;
+        t.ProfileId = null;
+        if (f.Kind != FeatureKind.Toggle && t.Gesture == GestureKind.WhileHeld) t.Gesture = t.UsesController ? GestureKind.Hold : GestureKind.DoubleTap;
+    }
+
+    /// <summary>From the Devices page: a new trigger that already knows what it changes. Its card asks for the type.</summary>
+    public void AddForFeature(DeviceFeature f, FeatureAction action, string? value)
+    {
+        var t = new Trigger { Kind = TriggerKind.Unset };
+        PickFeature(t, f, action, value);
+        AllTriggers.Add(t);
+        _expanded.Add(t.Id);
+        _scrollTo = t.Id;
+        Save();
+    }
+
+    /// <summary>Opens a trigger's row (from the Devices page).</summary>
+    public void Open(string triggerId)
+    {
+        _expanded.Add(triggerId);
+        _scrollTo = triggerId;
+        Rebuild();
     }
 
     Button ProfileButton(Trigger t)
@@ -718,6 +852,14 @@ public partial class TriggersPage : UserControl
     {
         if (t.IsPicker || t.Kind == TriggerKind.Unset) return null;
         var panel = new StackPanel { Margin = new Thickness(0, compact ? 8 : 0, 0, 0) };
+        if (t.ChangesDevice)
+        {
+            // Only Big Picture has an end to undo it at; keys and buttons can use Toggle or While held instead.
+            if (t.Kind != TriggerKind.SteamBigPicture) return null;
+            panel.Children.Add(Option("Undo it when Big Picture closes", "Turns it back off (or on) when Big Picture closes. Toggles toggle again.",
+                t.SwitchBack, v => t.SwitchBack = v, compact));
+            return panel;
+        }
         if (t.Kind == TriggerKind.SteamBigPicture)
         {
             panel.Children.Add(Option("Revert to the previous profile when Big Picture closes",
@@ -767,7 +909,9 @@ public partial class TriggersPage : UserControl
         if (t.Kind == TriggerKind.Unset) text = "Choose a type to finish setting this up";
         else if (!t.Enabled) text = "Off";
         else if (!t.HasInput) text = t.UsesController ? "Set the buttons to turn this on" : "Set a key to turn this on";
-        else if (!t.IsPicker && t.ProfileId == null) text = "Pick a profile to turn this on";
+        else if (t.ChangesDevice && t.Feature == null) text = "Pick what to change to turn this on";
+        else if (t.ChangesDevice && _features.Find(t.DeviceId, t.Feature) == null) text = $"{t.DeviceName ?? "The device"} isn't connected";
+        else if (!t.IsPicker && !t.ChangesDevice && t.ProfileId == null) text = "Pick a profile to turn this on";
         else if (_engine.IsEngaged(t)) text = t.HasEnd ? "Switched. Reverts when Big Picture closes." : "Switched. Fire it again to go back.";
         else if (_engine.LastFired(t) is { } at) text = $"Last fired at {at:T}";
         else if (t.UsesController && _engine.ControllersConnected == 0) text = "Ready, once a controller connects";

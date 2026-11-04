@@ -17,6 +17,7 @@ public sealed class TriggerEngine : IDisposable
 
     readonly ProfileService _profiles;
     readonly ProfileSwitcher _switcher;
+    readonly Devices.FeatureService _features;
     readonly Toast _toast;
     readonly Dispatcher _ui;
     readonly Func<Profile?> _activeProfile;
@@ -46,16 +47,19 @@ public sealed class TriggerEngine : IDisposable
     /// <summary>Raised when something the Triggers page shows changes (last fired, Big Picture state).</summary>
     public event Action? StateChanged;
 
-    public TriggerEngine(ProfileService profiles, ProfileSwitcher switcher, Toast toast, Dispatcher ui, Func<Profile?> activeProfile)
+    public TriggerEngine(ProfileService profiles, ProfileSwitcher switcher, Devices.FeatureService features, Toast toast, Dispatcher ui, Func<Profile?> activeProfile)
     {
         _profiles = profiles;
         _switcher = switcher;
+        _features = features;
         _toast = toast;
         _ui = ui;
         _activeProfile = activeProfile;
         _hook = new KeyboardHook(OnKey);
         _detector.Fired += tag => OnGesture((Trigger)tag);
+        _detector.Released += tag => OnReleased((Trigger)tag);
         _pad.Fired += tag => OnGesture((Trigger)tag);
+        _pad.Released += tag => OnReleased((Trigger)tag);
         _controllers = new ControllerWatcher(ui);
         _controllers.Read += OnController;
         _controllers.Polled += () => _pad.Tick(_clock.ElapsedMilliseconds);
@@ -199,6 +203,33 @@ public sealed class TriggerEngine : IDisposable
         Dispatch(ShowPicker);
     }
 
+    /// <summary>The end of a "while held": the buttons or key were let go.</summary>
+    void OnReleased(Trigger t)
+    {
+        if (t.Gesture == GestureKind.WhileHeld && t.ChangesDevice) Dispatch(() => _ = RunDevice(t, starting: false));
+    }
+
+    /// <summary>A device trigger: changes the feature, says so (except for the quiet ends of "while held").</summary>
+    async Task RunDevice(Trigger t, bool starting)
+    {
+        FeatureAction action;
+        if (t.Gesture == GestureKind.WhileHeld && t.UsesController || t.Gesture == GestureKind.WhileHeld && t.UsesKeyboard)
+            action = starting ? FeatureAction.On : FeatureAction.Off;
+        else if (starting) action = t.Action;
+        // Big Picture closing, with "Undo it" on: the opposite of what opening did.
+        else if (t.HasEnd && t.SwitchBack && t.Action is FeatureAction.On or FeatureAction.Off or FeatureAction.Toggle)
+            action = t.Action switch { FeatureAction.On => FeatureAction.Off, FeatureAction.Off => FeatureAction.On, _ => FeatureAction.Toggle };
+        else return;
+
+        _lastFired[t.Id] = DateTime.Now;
+        var error = await _features.RunAsync(t, action);
+        string what = _features.Describe(t, withDevice: false);
+        SwitchLog.Write($"Trigger {KeyNames.Describe(t)}: {_features.Describe(t, withDevice: true)}" + (starting ? "" : " (let go)") + (error != null ? $": {error}" : ""));
+        if (error != null) _toast.Show("Couldn't change the device", error);
+        else if (t.Gesture != GestureKind.WhileHeld) _toast.Show(what, _features.Describe(t, withDevice: true));
+        StateChanged?.Invoke();
+    }
+
     void ShowPicker()
     {
         var active = _activeProfile();
@@ -254,6 +285,7 @@ public sealed class TriggerEngine : IDisposable
     async Task Fire(Trigger t, bool starting)
     {
         if (_paused) return;
+        if (t.ChangesDevice) { await RunDevice(t, starting); return; }
         _lastFired[t.Id] = DateTime.Now;
         StateChanged?.Invoke();
 

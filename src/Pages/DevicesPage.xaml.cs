@@ -13,11 +13,12 @@ public partial class DevicesPage : UserControl
     readonly AppSettings _settings;
     readonly DispatcherTimer _meterTimer;
 
-    public DevicesPage(DeviceHub hub, AppSettings settings)
+    public DevicesPage(DeviceHub hub, AppSettings settings, FeatureService features, Profiles.ProfileService profiles)
     {
         InitializeComponent();
         _hub = hub;
         _settings = settings;
+        InitFeatures(features, profiles);
         ShowDisabledSwitch.IsChecked = settings.ShowDisabledDevices;
         _hub.Refreshing += SpinRefreshGlyph;
         _hub.Refreshed += Render;
@@ -54,8 +55,10 @@ public partial class DevicesPage : UserControl
         _stale = false;
 
         ShowDisplays();
+        ShowTvFeatures();
         ShowAudio();
         ShowInput();
+        ShowControllerFeatures();
         ShowCameras();
     }
 
