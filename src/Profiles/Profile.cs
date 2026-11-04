@@ -191,7 +191,7 @@ public static class ProfileStore
         try
         {
             if (File.Exists(FilePath))
-                return JsonSerializer.Deserialize<ProfileData>(File.ReadAllText(FilePath), Options) ?? new();
+                return Upgrade(JsonSerializer.Deserialize<ProfileData>(File.ReadAllText(FilePath), Options) ?? new());
         }
         catch (Exception ex)
         {
@@ -207,7 +207,14 @@ public static class ProfileStore
 
     /// <summary>For import. Throws on a file that isn't profiles data.</summary>
     public static ProfileData FromJson(string json) =>
-        JsonSerializer.Deserialize<ProfileData>(json, Options) ?? throw new InvalidDataException("The file is empty.");
+        Upgrade(JsonSerializer.Deserialize<ProfileData>(json, Options) ?? throw new InvalidDataException("The file is empty."));
+
+    /// <summary>Brings data from older versions up to date (see <see cref="Triggers.Trigger.Upgrade"/>).</summary>
+    static ProfileData Upgrade(ProfileData data)
+    {
+        foreach (var t in data.Triggers) t.Upgrade();
+        return data;
+    }
 
     public static void Save(ProfileData data)
     {

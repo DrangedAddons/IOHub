@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.0
+- **The profile picker is a THEN choice now.** *Profile picker* and *Controller picker* are no longer separate trigger
+  types: a *Key gesture* or *Controller buttons* trigger's THEN is *Switch to a profile*, *Pick a profile* or *Change
+  a device*. Existing picker triggers carry over as they were.
+- **While held for profiles.** Key gestures and controller buttons can switch to a profile while held, and back to
+  the previous setup when let go (a press and let-go counts as one switch for the loop guard). While held on an on/off
+  device function was already there; it isn't offered for pickers or one-off actions.
+- **Single controller buttons.** A controller trigger can be one button on its own, like the Xbox button. The Triggers
+  page says when that button also does something in games (or, for the Xbox button, opens Game Bar). Combinations
+  still only count when exactly their buttons are held.
+
 ## 0.5.0
 - **Triggers can change a device.** A trigger's *Then* is now either *Switch to a profile* or *Change a device*: pick
   the kind of device, the device, the feature and what to do with it. To start with:

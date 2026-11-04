@@ -7,13 +7,13 @@ public enum TriggerKind
     Hotkey = 0,
     /// <summary>Double tap, triple tap or hold of one key.</summary>
     KeyGesture = 1,
-    /// <summary>A gesture that opens a numbered list; the next digit picks the profile.</summary>
+    /// <summary>Before 0.6: a key gesture that opens the profile list. Now a KeyGesture with Then = Picker; only read from old files.</summary>
     ProfilePicker = 2,
     /// <summary>Steam Big Picture opening (and closing). An integration.</summary>
     SteamBigPicture = 3,
     /// <summary>A press, double tap, triple tap or hold of a button combination on an Xbox controller.</summary>
     ControllerCombo = 4,
-    /// <summary>A controller combination that opens the profile list; the next button (A, B, X, Y, D-pad) picks.</summary>
+    /// <summary>Before 0.6: the controller version of ProfilePicker. Now a ControllerCombo with Then = Picker; only read from old files.</summary>
     ControllerPicker = 5,
     /// <summary>Just created; the type hasn't been picked yet. Never fires.</summary>
     Unset = 99,
@@ -28,7 +28,10 @@ public enum GestureKind
     Hold = 2,
     /// <summary>One press. Controller combinations only: a keyboard combo is a Hotkey.</summary>
     Press = 3,
-    /// <summary>On while held, off when let go. Only for triggers that change an on/off device feature.</summary>
+    /// <summary>
+    /// Lasts while held: switched to the profile (or a device feature on) while held, back when let go. Not for pickers,
+    /// or device features that aren't on/off.
+    /// </summary>
     WhileHeld = 4,
 }
 
@@ -39,6 +42,8 @@ public enum ThenKind
     Profile = 0,
     /// <summary>Change one feature of one device: mouse mode on, TV off, mic muted…</summary>
     Device = 1,
+    /// <summary>Open the profile list; the next number key (or controller button) picks the profile.</summary>
+    Picker = 2,
 }
 
 public enum FeatureAction { Toggle = 0, On = 1, Off = 2, Set = 3, Run = 4 }
@@ -75,7 +80,7 @@ public sealed class Trigger
     /// <summary>For <see cref="FeatureAction.Set"/>: the choice's value ("2" for HDMI 2).</summary>
     public string? Value { get; set; }
 
-    public bool ChangesDevice => Then == ThenKind.Device && !IsPicker;
+    public bool ChangesDevice => Then == ThenKind.Device;
 
     /// <summary>
     /// Key triggers: firing again while switched puts the previous setup back (a toggle).
@@ -93,7 +98,15 @@ public sealed class Trigger
     public bool UsesController => Kind is TriggerKind.ControllerCombo or TriggerKind.ControllerPicker;
 
     /// <summary>Opens the numbered profile list instead of switching to one profile.</summary>
-    public bool IsPicker => Kind is TriggerKind.ProfilePicker or TriggerKind.ControllerPicker;
+    public bool IsPicker => Then == ThenKind.Picker;
+
+    /// <summary>Old files had the picker as a kind of trigger; it's now what a trigger does. True if this one changed.</summary>
+    public bool Upgrade()
+    {
+        if (Kind == TriggerKind.ProfilePicker) { Kind = TriggerKind.KeyGesture; Then = ThenKind.Picker; return true; }
+        if (Kind == TriggerKind.ControllerPicker) { Kind = TriggerKind.ControllerCombo; Then = ThenKind.Picker; return true; }
+        return false;
+    }
 
     /// <summary>Its key or buttons have been set (always true for kinds that don't need any).</summary>
     public bool HasInput => UsesKeyboard ? Key != 0 : !UsesController || Buttons != 0;

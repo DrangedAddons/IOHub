@@ -102,14 +102,14 @@ public partial class TriggersPage : UserControl
         TriggerKind.Hotkey => ("Hotkey", "", "A key combination, like Ctrl + Alt + T"),
         TriggerKind.KeyGesture => ("Key gesture", "", "Double tap, triple tap or hold one key"),
         TriggerKind.ProfilePicker => ("Profile picker", "", "A gesture, then 1–9 to pick the profile"),
-        TriggerKind.ControllerCombo => ("Controller buttons", "\uE7FC", "Press, tap or hold buttons together, like View + Menu"),
+        TriggerKind.ControllerCombo => ("Controller buttons", "\uE7FC", "Press, tap or hold a button, or several together like View + Menu"),
         TriggerKind.ControllerPicker => ("Controller picker", "\uE7FC", "Buttons together, then A, B, X, Y or the D-pad to pick the profile"),
         TriggerKind.SteamBigPicture => ("Steam Big Picture", "", "Switch while Big Picture is open"),
         _ => ("New trigger", "", "Choose what sets it off"),
     };
 
-    static readonly TriggerKind[] Kinds = [TriggerKind.Hotkey, TriggerKind.KeyGesture, TriggerKind.ProfilePicker,
-        TriggerKind.ControllerCombo, TriggerKind.ControllerPicker, TriggerKind.SteamBigPicture];
+    // Pickers aren't a kind any more: "Pick a profile" is a THEN choice on key gestures and controller buttons.
+    static readonly TriggerKind[] Kinds = [TriggerKind.Hotkey, TriggerKind.KeyGesture, TriggerKind.ControllerCombo, TriggerKind.SteamBigPicture];
 
     static string CategoryName(TriggerCategory c) => c switch
     {
@@ -322,8 +322,11 @@ public partial class TriggersPage : UserControl
             // Big Picture is a "while it's open" trigger, so going back afterwards is the expected default.
             t.SwitchBack = kind == TriggerKind.SteamBigPicture;
             // Holding is the hardest to set off by accident mid-game.
-            if (kind is TriggerKind.ControllerCombo or TriggerKind.ControllerPicker) { t.Gesture = GestureKind.Hold; t.HoldMs = 800; }
+            if (kind == TriggerKind.ControllerCombo) { t.Gesture = GestureKind.Hold; t.HoldMs = 800; }
             else if (t.Gesture == GestureKind.Press) t.Gesture = GestureKind.DoubleTap;
+            // Only key gestures and controller buttons can open the picker.
+            if (t.IsPicker && kind is not (TriggerKind.KeyGesture or TriggerKind.ControllerCombo)) t.Then = ThenKind.Profile;
+            if (t.Gesture == GestureKind.WhileHeld && kind is not (TriggerKind.KeyGesture or TriggerKind.ControllerCombo)) t.Gesture = GestureKind.DoubleTap;
             Save();
         };
         return button;
@@ -335,7 +338,7 @@ public partial class TriggersPage : UserControl
         return t.Kind switch
         {
             TriggerKind.Unset => "Choose what sets it off",
-            TriggerKind.ProfilePicker or TriggerKind.ControllerPicker => KeyNames.Describe(t),
+            _ when t.IsPicker => KeyNames.Describe(t),
             TriggerKind.SteamBigPicture when !t.ChangesDevice => target == null ? "Not linked to a profile"
                 : $"Switches to {target.Name} while it's open" + (t.SwitchBack ? ", then reverts" : ""),
             _ when t.ChangesDevice => t.Kind == TriggerKind.SteamBigPicture
@@ -382,7 +385,6 @@ public partial class TriggersPage : UserControl
                 break;
 
             case TriggerKind.KeyGesture:
-            case TriggerKind.ProfilePicker:
                 var row = new WrapPanel();
                 row.Children.Add(GestureChoice(t));
                 var key = KeyButton(t, combo: false);
@@ -390,12 +392,9 @@ public partial class TriggersPage : UserControl
                 row.Children.Add(key);
                 panel.Children.Add(row);
                 if (t.Gesture == GestureKind.Hold) panel.Children.Add(HoldChoice(t));
-                if (t.Kind == TriggerKind.ProfilePicker)
-                    panel.Children.Add(Note("then press 1–9 within a couple of seconds to pick the profile with that number."));
                 break;
 
             case TriggerKind.ControllerCombo:
-            case TriggerKind.ControllerPicker:
                 var padRow = new WrapPanel();
                 padRow.Children.Add(GestureChoice(t, controller: true));
                 var buttons = ButtonsButton(t);
@@ -403,8 +402,8 @@ public partial class TriggersPage : UserControl
                 padRow.Children.Add(buttons);
                 panel.Children.Add(padRow);
                 if (t.Gesture == GestureKind.Hold) panel.Children.Add(HoldChoice(t));
-                panel.Children.Add(Note(t.Kind == TriggerKind.ControllerPicker
-                    ? "then press A, B, X, Y or a D-pad direction within a few seconds to pick the profile with that button."
+                panel.Children.Add(Note(ControllerButtons.Count(t.Buttons) == 1
+                    ? SingleButtonWarning(t.Buttons)
                     : "Only counts when exactly these buttons are held, so it won't go off mid-game while you're holding something else."));
                 if (_engine.ControllersConnected == 0) panel.Children.Add(Note("No Xbox controller is connected right now."));
                 break;
@@ -430,8 +429,8 @@ public partial class TriggersPage : UserControl
         var row = new StackPanel { Orientation = Orientation.Horizontal };
         var choices = new List<(GestureKind, string)> { (GestureKind.DoubleTap, "Double tap"), (GestureKind.TripleTap, "Triple tap"), (GestureKind.Hold, "Hold") };
         if (controller) choices.Insert(0, (GestureKind.Press, "Press"));
-        // On while held, off when let go: only makes sense for something that's on or off.
-        if (t.ChangesDevice && _features.Find(t.DeviceId, t.Feature) is { Kind: FeatureKind.Toggle }) choices.Add((GestureKind.WhileHeld, "While held"));
+        // Lasts while held, undone when let go: for switching profile, or a device feature that's on or off.
+        if (WhileHeldFits(t)) choices.Add((GestureKind.WhileHeld, "While held"));
         foreach (var (g, label) in choices)
         {
             var rb = new RadioButton
@@ -531,7 +530,7 @@ public partial class TriggersPage : UserControl
     Button ButtonsButton(Trigger t)
     {
         var button = new Button { Style = Res<Style>("GhostButton"), Padding = new Thickness(10, 6, 12, 6), HorizontalAlignment = HorizontalAlignment.Left };
-        button.Content = t.Buttons == 0 ? KeyPrompt("Click, then hold the buttons") : KeyChips(ControllerButtons.Combo(t.Buttons));
+        button.Content = t.Buttons == 0 ? KeyPrompt("Click, then press the button or buttons") : KeyChips(ControllerButtons.Combo(t.Buttons));
         button.ToolTip = "Click to change";
         button.Click += (_, _) => StartPadRecording(t, button);
         return button;
@@ -556,7 +555,7 @@ public partial class TriggersPage : UserControl
         var clock = System.Diagnostics.Stopwatch.StartNew();
         var lastScan = 0L;
         void Prompt(string text) => button.Content = KeyPrompt(text);
-        Prompt(slots.Count == 0 ? "Connect an Xbox controller… (Esc cancels)" : "Hold the buttons together, then let go… (Esc cancels)");
+        Prompt(slots.Count == 0 ? "Connect an Xbox controller… (Esc cancels)" : "Press the button, or hold several together, then let go… (Esc cancels)");
         timer.Tick += (_, _) =>
         {
             if (clock.Elapsed > TimeSpan.FromSeconds(20)) { StopRecording(); return; }
@@ -564,7 +563,7 @@ public partial class TriggersPage : UserControl
             {
                 lastScan = clock.ElapsedMilliseconds;
                 slots = XInputPad.Connected();
-                if (slots.Count > 0) Prompt("Hold the buttons together, then let go… (Esc cancels)");
+                if (slots.Count > 0) Prompt("Press the button, or hold several together, then let go… (Esc cancels)");
             }
             int held = 0;
             foreach (var slot in slots) if (XInputPad.TryRead(slot, out var b)) held |= b;
@@ -575,13 +574,6 @@ public partial class TriggersPage : UserControl
                 return;
             }
             if (seen == 0) return;
-            if (ControllerButtons.Count(seen) < 2)
-            {
-                // One button on its own gets pressed (and double-tapped, and held) all the time in games.
-                seen = 0;
-                Prompt("Use two or more buttons together, like View + Menu");
-                return;
-            }
             t.Buttons = seen;
             StopRecording();
             Save();
@@ -655,10 +647,16 @@ public partial class TriggersPage : UserControl
     UIElement ThenEditor(Trigger t)
     {
         var panel = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+        panel.Children.Add(ThenChoice(t));
         if (t.IsPicker)
         {
+            panel.Children.Add(new TextBlock
+            {
+                Margin = new Thickness(0, 10, 0, 8), FontSize = 13.5, TextWrapping = TextWrapping.Wrap,
+                Text = t.UsesController ? "Opens the profile list. Then press a button within a few seconds:" : "Opens the profile list. Then press a number within a couple of seconds:",
+            });
             if (_profiles.Profiles.Count == 0) { panel.Children.Add(Note("Make a profile first.")); return panel; }
-            bool pad = t.Kind == TriggerKind.ControllerPicker;
+            bool pad = t.UsesController;
             var picks = ControllerButtons.PickerButtons;
             var chips = new WrapPanel();
             for (int i = 0; i < _profiles.Profiles.Count && i < (pad ? picks.Length : 9); i++)
@@ -680,7 +678,6 @@ public partial class TriggersPage : UserControl
             return panel;
         }
 
-        panel.Children.Add(ThenChoice(t));
         var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
         if (t.ChangesDevice)
         {
@@ -692,6 +689,7 @@ public partial class TriggersPage : UserControl
         row.Children.Add(new TextBlock { Text = "Switch to", FontSize = 13.5, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) });
         row.Children.Add(ProfileButton(t));
         panel.Children.Add(row);
+        if (t.Gesture == GestureKind.WhileHeld) panel.Children.Add(Note("Switches while held, and back to the previous setup when let go."));
         return panel;
     }
 
@@ -704,7 +702,10 @@ public partial class TriggersPage : UserControl
             CornerRadius = new CornerRadius(10), Padding = new Thickness(3), HorizontalAlignment = HorizontalAlignment.Left,
         };
         var row = new StackPanel { Orientation = Orientation.Horizontal };
-        foreach (var (then, label) in new[] { (ThenKind.Profile, "Switch to a profile"), (ThenKind.Device, "Change a device") })
+        var choices = new List<(ThenKind, string)> { (ThenKind.Profile, "Switch to a profile") };
+        if (t.Kind is TriggerKind.KeyGesture or TriggerKind.ControllerCombo) choices.Add((ThenKind.Picker, "Pick a profile"));
+        choices.Add((ThenKind.Device, "Change a device"));
+        foreach (var (then, label) in choices)
         {
             var rb = new RadioButton
             {
@@ -715,8 +716,8 @@ public partial class TriggersPage : UserControl
             {
                 if (t.Then == then) return;
                 t.Then = then;
-                if (then == ThenKind.Device) { t.ProfileId = null; t.SwitchBack = false; }
-                else if (t.Gesture == GestureKind.WhileHeld) t.Gesture = t.UsesController ? GestureKind.Hold : GestureKind.DoubleTap;
+                if (then != ThenKind.Profile) { t.ProfileId = null; t.SwitchBack = false; }
+                if (t.Gesture == GestureKind.WhileHeld && !WhileHeldFits(t)) t.Gesture = t.UsesController ? GestureKind.Hold : GestureKind.DoubleTap;
                 Save();
             };
             row.Children.Add(rb);
@@ -781,6 +782,20 @@ public partial class TriggersPage : UserControl
         };
         return button;
     }
+
+    /// <summary>"While held" needs something to undo when let go: a profile switch, or a device feature that's on or off.</summary>
+    bool WhileHeldFits(Trigger t) =>
+        t.Kind is TriggerKind.KeyGesture or TriggerKind.ControllerCombo
+        && (t.Then == ThenKind.Profile || t.ChangesDevice && _features.Find(t.DeviceId, t.Feature) is { Kind: FeatureKind.Toggle });
+
+    /// <summary>One button on its own: fine for some, risky for the ones games use.</summary>
+    static string SingleButtonWarning(int button) => button switch
+    {
+        ControllerButtons.Guide => "The Xbox button on its own also opens Game Bar, unless that's turned off (Windows Settings → Gaming → Game Bar).",
+        ControllerButtons.View or ControllerButtons.LeftStick or ControllerButtons.RightStick
+            => $"{ControllerButtons.Name(button)} on its own: games use it too, so Hold for a second or more is safest.",
+        _ => $"{ControllerButtons.Name(button)} on its own also does whatever it does in your game. A combination, or holding it for a while, is safer.",
+    };
 
     static void PickFeature(Trigger t, DeviceFeature f, FeatureAction action, string? value)
     {
@@ -872,6 +887,7 @@ public partial class TriggersPage : UserControl
         }
         else
         {
+            if (t.Gesture == GestureKind.WhileHeld) return null; // it always goes back when let go
             panel.Children.Add(Option(t.UsesController ? "Do it again to switch back" : "Press again to switch back",
                 $"The same {(t.UsesController ? "buttons" : "keys")} put the previous setup back, so one trigger works as a toggle.",
                 t.SwitchBack, v => t.SwitchBack = v, compact));
@@ -915,6 +931,7 @@ public partial class TriggersPage : UserControl
         else if (_engine.IsEngaged(t)) text = t.HasEnd ? "Switched. Reverts when Big Picture closes." : "Switched. Fire it again to go back.";
         else if (_engine.LastFired(t) is { } at) text = $"Last fired at {at:T}";
         else if (t.UsesController && _engine.ControllersConnected == 0) text = "Ready, once a controller connects";
+        else if (t.IsPicker && _profiles.Profiles.Count == 0) text = "Make a profile to turn this on";
         else text = t.Kind == TriggerKind.SteamBigPicture ? "Watching for Big Picture" : "Ready";
 
         bool live = t.Enabled && !_engine.Paused && (text is "Ready" or "Watching for Big Picture" || text.StartsWith("Last"));

@@ -101,8 +101,7 @@ public sealed class TriggerEngine : IDisposable
         if (keyed.Count > 0) { _hook.Install(); _tick.Start(); }
         else { _hook.Uninstall(); _tick.Stop(); _detector.Reset(); }
 
-        // Controller combinations need two buttons or more; the Triggers page won't record fewer.
-        var padded = active.Where(t => t.UsesController && ControllerButtons.Count(t.Buttons) >= 2).ToList();
+        var padded = active.Where(t => t.UsesController && t.Buttons != 0).ToList();
         _pad.SetEntries(padded.Select(t => new ControllerGestures.Entry(t.Buttons, t.Gesture, t.HoldMs, t)));
         if (padded.Count > 0) _controllers.Start();
         else { _controllers.Stop(); _pad.Reset(); }
@@ -189,7 +188,7 @@ public sealed class TriggerEngine : IDisposable
     {
         if (t.IsPicker)
         {
-            OpenPicker(byController: t.Kind == TriggerKind.ControllerPicker);
+            OpenPicker(byController: t.UsesController);
             return;
         }
         Dispatch(() => _ = Fire(t, starting: true));
@@ -206,8 +205,13 @@ public sealed class TriggerEngine : IDisposable
     /// <summary>The end of a "while held": the buttons or key were let go.</summary>
     void OnReleased(Trigger t)
     {
-        if (t.Gesture == GestureKind.WhileHeld && t.ChangesDevice) Dispatch(() => _ = RunDevice(t, starting: false));
+        if (t.Gesture != GestureKind.WhileHeld) return;
+        if (t.ChangesDevice) Dispatch(() => _ = RunDevice(t, starting: false));
+        else if (t.Then == ThenKind.Profile) Dispatch(() => _ = Fire(t, starting: false));
     }
+
+    // "While held" profile triggers let go before their switch finished: switch back as soon as it has.
+    readonly HashSet<string> _letGoEarly = [];
 
     /// <summary>A device trigger: changes the feature, says so (except for the quiet ends of "while held").</summary>
     async Task RunDevice(Trigger t, bool starting)
@@ -289,7 +293,8 @@ public sealed class TriggerEngine : IDisposable
         _lastFired[t.Id] = DateTime.Now;
         StateChanged?.Invoke();
 
-        if (TooManySwitches())
+        // Letting go of a "while held" isn't a new switch to count: only the hold is.
+        if (!(t.Gesture == GestureKind.WhileHeld && !starting) && TooManySwitches())
         {
             SwitchLog.Write($"Triggers paused: {LoopLimit} automatic switches within {LoopWindow.TotalMinutes:0} minutes");
             Paused = true;
@@ -300,9 +305,16 @@ public sealed class TriggerEngine : IDisposable
         // Changing displays makes Steam recreate the Big Picture window; don't take that as Big Picture closing.
         if (t.Kind == TriggerKind.SteamBigPicture) _bigPicture.IgnoreClosesFor(TimeSpan.FromSeconds(20));
 
-        if (!starting || (t.SwitchBack && !t.HasEnd && _engaged.ContainsKey(t.Id)))
+        // "While held" always goes back when let go; others only with "switch back" on.
+        bool switchBack = t.SwitchBack || t.Gesture == GestureKind.WhileHeld;
+        if (!starting && t.Gesture == GestureKind.WhileHeld && !_engaged.ContainsKey(t.Id))
         {
-            if (!t.SwitchBack || !_engaged.Remove(t.Id, out var before)) return;
+            _letGoEarly.Add(t.Id); // still switching: go back once it's done
+            return;
+        }
+        if (!starting || (switchBack && !t.HasEnd && _engaged.ContainsKey(t.Id)))
+        {
+            if (!switchBack || !_engaged.Remove(t.Id, out var before)) return;
             await _switcher.Restore(before, "Back to the previous profile", t.HasEnd ? "Big Picture closed" : KeyNames.Describe(t));
             StateChanged?.Invoke();
             return;
@@ -315,9 +327,16 @@ public sealed class TriggerEngine : IDisposable
             return;
         }
 
-        var snapshot = t.SwitchBack ? _switcher.Capture() : null;
+        _letGoEarly.Remove(t.Id);
+        var snapshot = switchBack ? _switcher.Capture() : null;
         bool ok = await _switcher.SwitchTo(profile, t.HasEnd ? "Big Picture opened" : KeyNames.Describe(t));
         if (snapshot != null && ok) _engaged[t.Id] = snapshot;
+        if (_letGoEarly.Remove(t.Id) && _engaged.Remove(t.Id, out var undo))
+        {
+            await _switcher.Restore(undo, "Back to the previous profile", KeyNames.Describe(t) + " let go");
+            StateChanged?.Invoke();
+            return;
+        }
         if (ok && t.Kind == TriggerKind.SteamBigPicture && t.ReopenBigPicture) await ReopenBigPicture();
         // The switch itself can take a while (a TV powering up); give the displays time to settle afterwards too.
         if (t.Kind == TriggerKind.SteamBigPicture) _bigPicture.IgnoreClosesFor(TimeSpan.FromSeconds(10));
@@ -337,7 +356,7 @@ public sealed class TriggerEngine : IDisposable
     public Task Test(Trigger t)
     {
         if (!t.IsPicker) return Fire(t, starting: true);
-        OpenPicker(byController: t.Kind == TriggerKind.ControllerPicker);
+        OpenPicker(byController: t.UsesController);
         return Task.CompletedTask;
     }
 

@@ -896,7 +896,7 @@ public partial class ProfilesPage : UserControl
     {
         var t = _data.Triggers.FirstOrDefault(x => x.Id == row.Id);
         if (t == null) return new Border();
-        if (t.Kind == TriggerKind.ProfilePicker)
+        if (t.IsPicker && !t.UsesController)
         {
             int n = _data.Profiles.IndexOf(p) + 1;
             return new TextBlock
@@ -906,7 +906,7 @@ public partial class ProfilesPage : UserControl
                 ToolTip = n <= 9 ? $"Press {n} in the profile picker for {p.Name}" : "The picker only reaches the first nine profiles",
             };
         }
-        if (t.Kind == TriggerKind.ControllerPicker)
+        if (t.IsPicker && t.UsesController)
         {
             int i = _data.Profiles.IndexOf(p);
             var picks = ControllerButtons.PickerButtons;

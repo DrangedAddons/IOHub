@@ -41,7 +41,12 @@ public static class KeyNames
         _ => $"Hold {Of(vk)} {holdMs / 1000.0:0.#} s",
     };
 
-    public static string Describe(Trigger t) => t.Kind switch
+    public static string Describe(Trigger t) => t.IsPicker && t.HasInput
+        ? (t.UsesController ? $"{When(t)}, then A, B, X, Y or the D-pad" : $"{When(t)}, then 1–9")
+        : When(t);
+
+    /// <summary>Just what sets it off: "Double-tap Right Ctrl", "Hold View + Menu 0.8 s".</summary>
+    public static string When(Trigger t) => t.Kind switch
     {
         TriggerKind.Hotkey => t.Key == 0 ? "Hotkey not set" : Combo(t.Mods, t.Key),
         TriggerKind.KeyGesture => t.Key == 0 ? "Key not set" : Gesture(t.Gesture, t.Key, t.HoldMs),
