@@ -230,22 +230,38 @@ public partial class TriggersPage : UserControl
             return new Border { Style = Res<Style>("Card"), Padding = new Thickness(20, 16, 20, 16), Child = stack, BorderBrush = Res<Brush>("AccentBrush") };
         }
 
-        var flow = new WrapPanel { Margin = new Thickness(56, 16, 0, 0), Opacity = t.Enabled ? 1 : 0.5, IsEnabled = t.Enabled };
-        flow.Children.Add(Block("WHEN", WhenEditor(t)));
-        flow.Children.Add(new TextBlock
+        // Fixed columns side by side, never wrapping under each other: the window can't get narrower than they need
+        // (MainWindow's MinWidth), and long text wraps inside its own column.
+        var flow = new Grid { Margin = new Thickness(0, 16, 0, 0), Opacity = t.Enabled ? 1 : 0.5, IsEnabled = t.Enabled };
+        flow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(WhenWidth) });
+        flow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(ArrowWidth) });
+        flow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(ThenWidth) });
+        flow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = OptionsMinWidth });
+        Place(flow, Block("WHEN", WhenEditor(t)), 0);
+        Place(flow, new TextBlock
         {
             Text = "", FontFamily = Res<FontFamily>("IconFont"), FontSize = 14, Foreground = Res<Brush>("FaintBrush"),
-            VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 30, 28, 0),
-        });
-        flow.Children.Add(Block("THEN", ThenEditor(t)));
-        if (Options(t, compact: true) is { } options) flow.Children.Add(Block("OPTIONS", options));
+            VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 30, 0, 0),
+        }, 1);
+        Place(flow, Block("THEN", ThenEditor(t)), 2);
+        if (Options(t, compact: true) is { } options) Place(flow, Block("OPTIONS", options), 3);
         stack.Children.Add(flow);
         return new Border { Style = Res<Style>("Card"), Padding = new Thickness(20, 16, 20, 16), Child = stack };
     }
 
+    // Rows layout column widths, from the widest things in them (the five-gesture bar is about 410 px, the THEN choice
+    // about 380). MainWindow.MinWidth comes from these, so the columns always fit side by side.
+    public const double WhenWidth = 440, ArrowWidth = 42, ThenWidth = 420, OptionsMinWidth = 220;
+
+    /// <summary>
+    /// The narrowest this page can be with a row's columns side by side: the columns, the card's padding, the page's
+    /// margins, and room for the scroll bar.
+    /// </summary>
+    public const double MinPageWidth = WhenWidth + ArrowWidth + ThenWidth + OptionsMinWidth + 42 + 80 + 20;
+
     UIElement Block(string label, UIElement content)
     {
-        var block = new StackPanel { Margin = new Thickness(0, 0, 28, 6), MaxWidth = 520 };
+        var block = new StackPanel { Margin = new Thickness(0, 0, 28, 6) };
         block.Children.Add(Label(label));
         block.Children.Add(content);
         return block;
@@ -385,20 +401,20 @@ public partial class TriggersPage : UserControl
                 break;
 
             case TriggerKind.KeyGesture:
-                var row = new WrapPanel();
+                var row = new StackPanel(); // gestures, then the key under them: never side by side, so it never wraps
                 row.Children.Add(GestureChoice(t));
                 var key = KeyButton(t, combo: false);
-                key.Margin = new Thickness(10, 0, 0, 0);
+                key.Margin = new Thickness(0, 8, 0, 0);
                 row.Children.Add(key);
                 panel.Children.Add(row);
                 if (t.Gesture == GestureKind.Hold) panel.Children.Add(HoldChoice(t));
                 break;
 
             case TriggerKind.ControllerCombo:
-                var padRow = new WrapPanel();
+                var padRow = new StackPanel(); // gestures, then the buttons under them
                 padRow.Children.Add(GestureChoice(t, controller: true));
                 var buttons = ButtonsButton(t);
-                buttons.Margin = new Thickness(10, 0, 0, 0);
+                buttons.Margin = new Thickness(0, 8, 0, 0);
                 padRow.Children.Add(buttons);
                 panel.Children.Add(padRow);
                 if (t.Gesture == GestureKind.Hold) panel.Children.Add(HoldChoice(t));
@@ -424,7 +440,7 @@ public partial class TriggersPage : UserControl
         var box = new Border
         {
             Background = Res<Brush>("SurfaceBrush"), BorderBrush = Res<Brush>("LineBrush"), BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(10), Padding = new Thickness(3),
+            CornerRadius = new CornerRadius(10), Padding = new Thickness(3), HorizontalAlignment = HorizontalAlignment.Left,
         };
         var row = new StackPanel { Orientation = Orientation.Horizontal };
         var choices = new List<(GestureKind, string)> { (GestureKind.DoubleTap, "Double tap"), (GestureKind.TripleTap, "Triple tap"), (GestureKind.Hold, "Hold") };
@@ -675,6 +691,7 @@ public partial class TriggersPage : UserControl
             }
             panel.Children.Add(chips);
             panel.Children.Add(Note(pad ? "Buttons follow the column order on the Profiles page." : "Numbers follow the column order on the Profiles page."));
+            if (t.Gesture == GestureKind.WhileHeld) panel.Children.Add(Note("The list stays open while held, and closes when let go."));
             return panel;
         }
 
@@ -683,7 +700,7 @@ public partial class TriggersPage : UserControl
         {
             row.Children.Add(FeatureButton(t));
             panel.Children.Add(row);
-            if (t.Gesture == GestureKind.WhileHeld) panel.Children.Add(Note("On while held, back off when let go."));
+            if (t.Gesture == GestureKind.WhileHeld) panel.Children.Add(Note("Does it while held, and puts it back how it was when let go."));
             return panel;
         }
         row.Children.Add(new TextBlock { Text = "Switch to", FontSize = 13.5, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) });
@@ -733,24 +750,35 @@ public partial class TriggersPage : UserControl
     Button FeatureButton(Trigger t)
     {
         var feature = _features.Find(t.DeviceId, t.Feature);
-        var content = new StackPanel { Orientation = Orientation.Horizontal };
+        // Two lines, the device over what it does to it, so it fits its column; anything longer is cut with "…".
+        var content = new Grid();
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var lines = new StackPanel();
         if (t.Feature == null)
-            content.Children.Add(new TextBlock { Text = "Pick a device and what to change", Foreground = Res<Brush>("WarnBrush") });
+            lines.Children.Add(new TextBlock { Text = "Pick a device and what to change", Foreground = Res<Brush>("WarnBrush") });
         else
         {
-            content.Children.Add(new TextBlock { Text = feature?.DeviceName ?? t.DeviceName ?? "Device", FontWeight = FontWeights.SemiBold });
-            if (feature == null)
-                content.Children.Add(new TextBlock { Text = "  (not connected)", Foreground = Res<Brush>("WarnBrush") });
-            content.Children.Add(new TextBlock { Text = "  ›  " + _features.Describe(t, withDevice: false), Foreground = Res<Brush>("MutedBrush") });
+            lines.Children.Add(new TextBlock
+            {
+                Text = (feature?.DeviceName ?? t.DeviceName ?? "Device") + (feature == null ? " (not connected)" : ""),
+                FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis,
+                Foreground = feature == null ? Res<Brush>("WarnBrush") : Res<Brush>("TextBrush"),
+            });
+            lines.Children.Add(new TextBlock { Text = _features.Describe(t, withDevice: false), Foreground = Res<Brush>("MutedBrush"), FontSize = 12, Margin = new Thickness(0, 2, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis });
         }
-        content.Children.Add(new TextBlock { Text = "\uE70D", FontFamily = Res<FontFamily>("IconFont"), FontSize = 9, Margin = new Thickness(10, 1, 0, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = Res<Brush>("MutedBrush") });
+        Place(content, lines, 0);
+        Place(content, new TextBlock { Text = "\uE70D", FontFamily = Res<FontFamily>("IconFont"), FontSize = 9, Margin = new Thickness(12, 1, 0, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = Res<Brush>("MutedBrush") }, 1);
 
-        var button = new Button { Style = Res<Style>("GhostButton"), Padding = new Thickness(12, 6, 12, 6), Content = content };
+        var button = new Button
+        {
+            Style = Res<Style>("GhostButton"), Padding = new Thickness(12, 6, 12, 6), Content = content,
+            HorizontalAlignment = HorizontalAlignment.Left, HorizontalContentAlignment = HorizontalAlignment.Stretch, MaxWidth = ThenWidth - 28,
+        };
         button.Click += (_, _) =>
         {
             var menu = new ContextMenu { PlacementTarget = button, Placement = PlacementMode.Bottom };
-            bool whileHeld = t.Gesture == GestureKind.WhileHeld;
-            var all = _features.All().Where(f => !whileHeld || f.Kind == FeatureKind.Toggle).ToList();
+            var all = _features.All();
             foreach (var section in all.GroupBy(f => f.Section))
             {
                 var sectionItem = new MenuItem { Header = section.Key };
@@ -760,8 +788,7 @@ public partial class TriggersPage : UserControl
                     foreach (var f in device)
                     {
                         var featureItem = new MenuItem { Header = f.Title, FontWeight = f.DeviceId == t.DeviceId && f.Id == t.Feature ? FontWeights.SemiBold : FontWeights.Normal };
-                        var actions = whileHeld ? [(FeatureAction.On, (string?)null, $"{f.OnLabel} while held")] : f.Actions.ToList();
-                        foreach (var (action, value, label) in actions)
+                        foreach (var (action, value, label) in f.Actions)
                         {
                             var item = new MenuItem
                             {
@@ -783,10 +810,8 @@ public partial class TriggersPage : UserControl
         return button;
     }
 
-    /// <summary>"While held" needs something to undo when let go: a profile switch, or a device feature that's on or off.</summary>
-    bool WhileHeldFits(Trigger t) =>
-        t.Kind is TriggerKind.KeyGesture or TriggerKind.ControllerCombo
-        && (t.Then == ThenKind.Profile || t.ChangesDevice && _features.Find(t.DeviceId, t.Feature) is { Kind: FeatureKind.Toggle });
+    /// <summary>"While held" is for keys and controller buttons, whatever they do: the switch, list or change lasts while held.</summary>
+    static bool WhileHeldFits(Trigger t) => t.Kind is TriggerKind.KeyGesture or TriggerKind.ControllerCombo;
 
     /// <summary>One button on its own: fine for some, risky for the ones games use.</summary>
     static string SingleButtonWarning(int button) => button switch
@@ -806,7 +831,6 @@ public partial class TriggersPage : UserControl
         t.Action = action;
         t.Value = value;
         t.ProfileId = null;
-        if (f.Kind != FeatureKind.Toggle && t.Gesture == GestureKind.WhileHeld) t.Gesture = t.UsesController ? GestureKind.Hold : GestureKind.DoubleTap;
     }
 
     /// <summary>From the Devices page: a new trigger that already knows what it changes. Its card asks for the type.</summary>

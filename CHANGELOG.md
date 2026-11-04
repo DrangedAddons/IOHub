@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.0
+- **While held works with every THEN.** On a key gesture or controller buttons:
+  - *Switch to a profile*: switches while held, back to the previous setup when let go.
+  - *Pick a profile*: the list stays open while held (pick with a number or button), and closes when let go.
+  - *Change a device*: does the chosen action while held, then puts the device back how it was: on or off, the TV's
+    input or app, the default sound device. If it couldn't tell how it was, an on/off is undone the obvious way.
+- **Trigger rows don't wrap.** In the Rows layout WHEN, THEN and OPTIONS are fixed columns side by side, and the window
+  can't be made narrower than they need (about 1520 px). The key or buttons sit under the gestures, and a device
+  pick shows as two lines (the device, then what it does).
+- A picker opened by holding a key no longer closes itself on that key's repeats, and key releases while a picker is
+  open reach the gesture detector (they were swallowed, which could leave a key looking held).
+
 ## 0.6.1
 - **The device menu opens.** On the Triggers page, *Change a device* → *Pick a device and what to change* listed the
   kinds of device, but clicking one did nothing: the app's menu style had no room for a submenu. Menus now open their

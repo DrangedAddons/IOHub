@@ -41,6 +41,8 @@ public sealed class TriggerEngine : IDisposable
 
     long _pickerUntil = -1;
     bool _pickerByController; // the open picker answers to controller buttons (and shows them)
+    int _pickerKey;            // the key that opened it: its key repeats don't close it
+    string? _pickerHeldBy;     // a "while held" trigger keeping it open until let go
     readonly HashSet<int> _pickerSwallowed = [];
     bool _paused, _suspended;
 
@@ -123,8 +125,10 @@ public sealed class TriggerEngine : IDisposable
         // While the picker is open the next digit is the answer, and it shouldn't reach the game.
         if (_pickerUntil >= 0)
         {
-            if (!down) return _pickerSwallowed.Remove(vk);
-            if (now > _pickerUntil) ClosePicker();
+            // Releases go on to the gesture detector, which has to see them (a "while held" ends on one).
+            if (!down) { if (_pickerSwallowed.Remove(vk)) return true; }
+            else if (vk == _pickerKey) { } // the opening key still held down: it repeats
+            else if (now > _pickerUntil) ClosePicker();
             else if (Digit(vk) is int n and > 0)
             {
                 _pickerSwallowed.Add(vk);
@@ -178,6 +182,8 @@ public sealed class TriggerEngine : IDisposable
     void ClosePicker()
     {
         _pickerUntil = -1;
+        _pickerKey = 0;
+        _pickerHeldBy = null;
         Dispatch(_toast.HideNow);
     }
 
@@ -188,17 +194,19 @@ public sealed class TriggerEngine : IDisposable
     {
         if (t.IsPicker)
         {
-            OpenPicker(byController: t.UsesController);
+            OpenPicker(byController: t.UsesController, t);
             return;
         }
         Dispatch(() => _ = Fire(t, starting: true));
     }
 
-    void OpenPicker(bool byController)
+    void OpenPicker(bool byController, Trigger? by = null)
     {
         _pickerByController = byController;
-        // A controller is slower to answer with than a number key.
-        _pickerUntil = _clock.ElapsedMilliseconds + (byController ? ControllerPickerWindowMs : PickerWindowMs);
+        _pickerKey = by is { UsesKeyboard: true } ? by.Key : 0;
+        // "While held": open until let go. Otherwise a few seconds; a controller is slower to answer with than a number key.
+        _pickerHeldBy = by is { Gesture: GestureKind.WhileHeld } ? by.Id : null;
+        _pickerUntil = _pickerHeldBy != null ? long.MaxValue : _clock.ElapsedMilliseconds + (byController ? ControllerPickerWindowMs : PickerWindowMs);
         Dispatch(ShowPicker);
     }
 
@@ -206,6 +214,7 @@ public sealed class TriggerEngine : IDisposable
     void OnReleased(Trigger t)
     {
         if (t.Gesture != GestureKind.WhileHeld) return;
+        if (t.IsPicker) { if (_pickerHeldBy == t.Id) ClosePicker(); return; }
         if (t.ChangesDevice) Dispatch(() => _ = RunDevice(t, starting: false));
         else if (t.Then == ThenKind.Profile) Dispatch(() => _ = Fire(t, starting: false));
     }
@@ -214,12 +223,16 @@ public sealed class TriggerEngine : IDisposable
     readonly HashSet<string> _letGoEarly = [];
 
     /// <summary>A device trigger: changes the feature, says so (except for the quiet ends of "while held").</summary>
+    /// <summary>A device "while held" in progress: what to put back, and whether it was let go before that was known.</summary>
+    sealed class Held { public string? Noted; public bool Started, LetGo; }
+    readonly Dictionary<string, Held> _held = [];
+
     async Task RunDevice(Trigger t, bool starting)
     {
+        if (t.Gesture == GestureKind.WhileHeld) { await RunDeviceWhileHeld(t, starting); return; }
+
         FeatureAction action;
-        if (t.Gesture == GestureKind.WhileHeld && t.UsesController || t.Gesture == GestureKind.WhileHeld && t.UsesKeyboard)
-            action = starting ? FeatureAction.On : FeatureAction.Off;
-        else if (starting) action = t.Action;
+        if (starting) action = t.Action;
         // Big Picture closing, with "Undo it" on: the opposite of what opening did.
         else if (t.HasEnd && t.SwitchBack && t.Action is FeatureAction.On or FeatureAction.Off or FeatureAction.Toggle)
             action = t.Action switch { FeatureAction.On => FeatureAction.Off, FeatureAction.Off => FeatureAction.On, _ => FeatureAction.Toggle };
@@ -234,17 +247,50 @@ public sealed class TriggerEngine : IDisposable
         StateChanged?.Invoke();
     }
 
+    /// <summary>
+    /// "While held" on a device: notes how it is, does the trigger's action, and puts it back when let go. Let go before
+    /// the action finished (a TV can take a while), and it's put back as soon as it has.
+    /// </summary>
+    async Task RunDeviceWhileHeld(Trigger t, bool starting)
+    {
+        if (starting)
+        {
+            var held = _held[t.Id] = new Held();
+            _lastFired[t.Id] = DateTime.Now;
+            held.Noted = await _features.CaptureAsync(t);
+            var error = await _features.RunAsync(t, t.Action);
+            SwitchLog.Write($"Trigger {KeyNames.Describe(t)}: {_features.Describe(t, withDevice: true)}, was \"{held.Noted ?? "unknown"}\"" + (error != null ? $": {error}" : ""));
+            if (error != null) { _held.Remove(t.Id); _toast.Show("Couldn't change the device", error); StateChanged?.Invoke(); return; }
+            held.Started = true;
+            StateChanged?.Invoke();
+            if (!held.LetGo) return; // still held
+        }
+        else if (_held.TryGetValue(t.Id, out var pending) && !pending.Started) { pending.LetGo = true; return; }
+
+        if (!_held.Remove(t.Id, out var done)) return;
+        string? putBack;
+        if (done.Noted != null) putBack = await _features.RestoreAsync(t, done.Noted);
+        // Couldn't tell how it was: undo an on/off the obvious way; a choice or action stays.
+        else if (t.Action is FeatureAction.On or FeatureAction.Off or FeatureAction.Toggle)
+            putBack = await _features.RunAsync(t, t.Action switch { FeatureAction.On => FeatureAction.Off, FeatureAction.Off => FeatureAction.On, _ => FeatureAction.Toggle });
+        else putBack = null;
+        SwitchLog.Write($"Trigger {KeyNames.Describe(t)} let go: put back \"{done.Noted ?? "the opposite"}\"" + (putBack != null ? $": {putBack}" : ""));
+        if (putBack != null) _toast.Show("Couldn't put the device back", putBack);
+        StateChanged?.Invoke();
+    }
+
     void ShowPicker()
     {
         var active = _activeProfile();
         var profiles = _profiles.Profiles
             .Select(p => (p.Name, (Color)ColorConverter.ConvertFromString(p.Color), p == active))
             .ToList();
+        bool held = _pickerHeldBy != null;
         if (_pickerByController)
-            _toast.ShowPicker(profiles, ControllerPickerWindowMs / 1000.0, ControllerButtons.PickerButtons.Select(ControllerButtons.ShortName).ToList(),
-                "Press its button. View cancels.");
+            _toast.ShowPicker(profiles, held ? 600 : ControllerPickerWindowMs / 1000.0, ControllerButtons.PickerButtons.Select(ControllerButtons.ShortName).ToList(),
+                held ? "Press its button. Let go to close." : "Press its button. View cancels.");
         else
-            _toast.ShowPicker(profiles, PickerWindowMs / 1000.0);
+            _toast.ShowPicker(profiles, held ? 600 : PickerWindowMs / 1000.0, hint: held ? "Press its number. Let go to close." : "Press its number. Esc cancels.");
     }
 
     async Task PickNumber(int n)

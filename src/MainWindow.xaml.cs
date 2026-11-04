@@ -34,6 +34,9 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         Title = AppNameText.Text = AppInfo.Name;
+        // Never narrower than the Triggers page's rows need (sidebar + page), so WHEN, THEN and OPTIONS stay side by side.
+        MinWidth = Math.Max(MinWidth, 236 + TriggersPage.MinPageWidth + 16);
+        if (Width < MinWidth) Width = MinWidth;
 
         _hub = new DeviceHub(Dispatcher);
         _hub.Refreshed += () => UpdatedText.Text = $"Updated {_hub.LastUpdated:T}";
