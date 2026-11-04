@@ -19,9 +19,11 @@
   - It pauses while a game or other fullscreen app is in front (games still see the controller), unless that's
     switched off. Four pointer speeds.
   - Turn off Steam's controller mouse (Guide Button Chord Layout and Desktop Layout) so the two don't fight.
-- **Devices page shows what can be changed.** Mouse mode under the controllers, a TV controls card for paired LG TVs
-  (with buttons to do it now), and a menu on each sound device. Each lists its triggers (click one to open it) and
-  has *Add a trigger*, which opens a new trigger on the Triggers page with the device already picked.
+- **Devices page shows what can be changed.** Each tab has a functions table: *Controller functions* (Input), *TV
+  functions* (Video, for paired LG TVs) and *Sound functions* (Audio, sound output and microphones), grouped by device.
+  Every row is one function, with buttons to do it now and its triggers on the right (click one to open it).
+  *Add a trigger* opens a new trigger on the Triggers page with the device already picked. Sound devices also have
+  a ⋯ menu with the same things.
 
 ## 0.4.1
 - **A TV turned off stays off.** Auto return switched the TV back to its old input and turned it off straight away.

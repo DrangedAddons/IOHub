@@ -30,7 +30,7 @@ public sealed class DeviceFeature
     public required string Title { get; init; }
     public required FeatureKind Kind { get; init; }
     public IReadOnlyList<FeatureChoice> Choices { get; init; } = [];
-    /// <summary>On/off right now, if it can be read cheaply; null when unknown.</summary>
+    /// <summary>On/off right now (for an action: already done), if it can be read cheaply; null when unknown.</summary>
     public Func<bool?> State { get; init; } = () => null;
     /// <summary>Does it. Returns an error message, or null.</summary>
     public required Func<FeatureAction, string?, Task<string?>> Run { get; init; }
@@ -132,6 +132,7 @@ public sealed class FeatureService(DeviceHub hub, ProfileService profiles, Profi
             {
                 Section = section, DeviceId = id, DeviceName = a.Name,
                 Id = "default", Title = "Make it the default", Kind = FeatureKind.Action,
+                State = () => a.IsDefault, // for an action: already done
                 Run = (_, _) => Task.FromResult(hub.MakeDefaultAudio(id)),
             });
             list.Add(new DeviceFeature

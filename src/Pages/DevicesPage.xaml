@@ -392,6 +392,8 @@
                 </ui:AdaptiveGrid>
                 <TextBlock Style="{StaticResource Muted}" Margin="4,14,0,0" TextWrapping="Wrap" TextTrimming="None"
                            Text="Level bars show what each device is playing or hearing right now. Microphones only show a level while an app is listening."/>
+                <!-- Mute and default for each sound device, with their triggers; filled in code. -->
+                <StackPanel x:Name="AudioFeatures" Margin="0,24,12,0"/>
             </StackPanel>
         </ScrollViewer>
 

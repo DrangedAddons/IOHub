@@ -57,6 +57,7 @@ public partial class DevicesPage : UserControl
         ShowDisplays();
         ShowTvFeatures();
         ShowAudio();
+        ShowAudioFeatures();
         ShowInput();
         ShowControllerFeatures();
         ShowCameras();
