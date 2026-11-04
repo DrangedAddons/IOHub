@@ -20,7 +20,6 @@ public partial class DevicesPage : UserControl
         _settings = settings;
         InitFeatures(features, profiles);
         ShowDisabledSwitch.IsChecked = settings.ShowDisabledDevices;
-        ShowFunctionsSwitch.IsChecked = settings.ShowDeviceFunctions;
         _hub.Refreshing += SpinRefreshGlyph;
         _hub.Refreshed += Render;
 
@@ -47,13 +46,7 @@ public partial class DevicesPage : UserControl
 
     bool ShowDisabled => _settings.ShowDisabledDevices;
 
-    void ShowFunctions_Changed(object sender, RoutedEventArgs e)
-    {
-        if (_settings == null) return; // fires during InitializeComponent
-        _settings.ShowDeviceFunctions = ShowFunctionsSwitch.IsChecked == true;
-        _settings.Save();
-        Render();
-    }
+
 
     bool _stale;
 
@@ -63,12 +56,11 @@ public partial class DevicesPage : UserControl
         if (!IsVisible) { _stale = true; return; }
         _stale = false;
 
+        _featureList = _features?.All() ?? [];
         ShowDisplays();
         ShowTvFeatures();
         ShowAudio();
-        ShowAudioFeatures();
         ShowInput();
-        ShowControllerFeatures();
         ShowCameras();
     }
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.0
+- **Device functions fold into the devices.** Instead of the *Show functions* switch and a table per tab, each device
+  that can be changed has a "2 functions · 1 trigger" button. It opens that device's functions underneath (what it is,
+  buttons to do it now, its triggers), and closes them again. Devices you leave open stay open.
+  - Sound devices, Xbox controllers and LG TVs that are on have it on their own row or card.
+  - Mouse mode's settings are under the controller's functions, behind *Mouse mode settings*.
+  - Paired LG TVs that are off (so Windows doesn't list them) are under *TVs that are off* on the Video tab, so you
+    can still turn one on.
+  - Cameras have nothing to change yet, so they don't show the button.
+
 ## 0.7.0
 - **While held works with every THEN.** On a key gesture or controller buttons:
   - *Switch to a profile*: switches while held, back to the previous setup when let go.

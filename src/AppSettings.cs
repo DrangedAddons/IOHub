@@ -9,8 +9,8 @@ public sealed class AppSettings
     // Views
     public string OverviewLayout { get; set; } = "Flow";
     public bool ShowDisabledDevices { get; set; }
-    /// <summary>Devices page: the tables of what can be changed on each device, and their triggers.</summary>
-    public bool ShowDeviceFunctions { get; set; }
+    /// <summary>Devices page: devices whose functions are opened (by feature device id), so they stay open.</summary>
+    public List<string> OpenDeviceFunctions { get; set; } = [];
     public string TriggersLayout { get; set; } = "Rows";
 
     // Startup and tray. Whether it starts with Windows lives in the registry (StartupEntry), not here.

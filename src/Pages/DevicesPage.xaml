@@ -32,6 +32,8 @@
                             <Border Style="{StaticResource Badge}" Margin="0" Visibility="{Binding IsInactive, Converter={StaticResource BoolToVis}}">
                                 <TextBlock Text="Standby"/>
                             </Border>
+                            <!-- "2 functions ⌄": filled in code for devices that have any -->
+                            <ContentControl Loaded="FxToggle_Loaded" Focusable="False" Margin="6,-3,0,0"/>
                         </StackPanel>
                     </Grid>
 
@@ -64,6 +66,8 @@
 
                     <TextBlock Text="Plugged in, but not part of the desktop right now." Style="{StaticResource Muted}" TextWrapping="Wrap"
                                Visibility="{Binding IsInactive, Converter={StaticResource BoolToVis}}"/>
+                    <!-- The functions, when opened -->
+                    <ContentControl Loaded="FxPanel_Loaded" Focusable="False"/>
                 </StackPanel>
             </Border>
             <DataTemplate.Triggers>
@@ -88,10 +92,10 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
-                    <Button Grid.Column="3" Grid.RowSpan="2" Style="{StaticResource IconButton}" Content="&#xE712;" VerticalAlignment="Top" Margin="4,0,-4,0"
-                            ToolTip="Change it now, or set up a trigger" Tag="{Binding Id}" Click="AudioMore_Click"
-                            Visibility="{Binding IsActive, Converter={StaticResource BoolToVis}}"/>
+                    <ContentControl Grid.Column="3" Grid.RowSpan="2" Loaded="FxToggle_Loaded" Focusable="False" VerticalAlignment="Top" Margin="6,-2,0,0"/>
+                    <ContentControl Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3" Loaded="FxPanel_Loaded" Focusable="False" Margin="12,0,0,0"/>
                     <Border x:Name="Tile" Style="{StaticResource IconTileSmall}" VerticalAlignment="Top" Grid.RowSpan="2">
                         <TextBlock Text="{Binding Glyph}" Style="{StaticResource Icon}"/>
                     </Border>
@@ -150,7 +154,14 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <ContentControl Grid.Column="2" Loaded="FxToggle_Loaded" Focusable="False" VerticalAlignment="Top"/>
+                    <ContentControl Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Loaded="FxPanel_Loaded" Focusable="False" Margin="14,0,0,0"/>
                     <Border Style="{StaticResource IconTile}" Background="{StaticResource AccentSoftBrush}" BorderBrush="#407B8CFF"
                             TextElement.Foreground="{StaticResource AccentBrush}" VerticalAlignment="Top">
                         <TextBlock Text="{Binding Glyph}" Style="{StaticResource Icon}" FontSize="20"/>
@@ -273,10 +284,6 @@
                            Foreground="{StaticResource MutedBrush}" Margin="0,6,0,0" TextWrapping="Wrap"/>
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,0,0">
-            <CheckBox x:Name="ShowFunctionsSwitch" Style="{StaticResource Switch}" Content="Show functions"
-                      VerticalAlignment="Center" Margin="0,0,18,0" WindowChrome.IsHitTestVisibleInChrome="True"
-                      Checked="ShowFunctions_Changed" Unchecked="ShowFunctions_Changed"
-                      ToolTip="What IO Hub can change on each device (mouse mode, TV power, mute…) and the triggers that do it"/>
             <CheckBox x:Name="ShowDisabledSwitch" Style="{StaticResource Switch}" Content="Show disabled devices"
                       VerticalAlignment="Center" Margin="0,0,18,0" WindowChrome.IsHitTestVisibleInChrome="True"
                       Checked="ShowDisabled_Changed" Unchecked="ShowDisabled_Changed"
@@ -361,7 +368,7 @@
                         <ItemsPanelTemplate><ui:AdaptiveGrid MinItemWidth="340"/></ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                 </ItemsControl>
-                <!-- Paired LG TVs and what can be changed on them; filled in code. -->
+                <!-- Paired LG TVs that are off (so not detected), to turn on; filled in code. -->
                 <StackPanel x:Name="TvFeatures" Margin="0,0,12,0"/>
             </StackPanel>
         </ScrollViewer>
@@ -396,8 +403,7 @@
                 </ui:AdaptiveGrid>
                 <TextBlock Style="{StaticResource Muted}" Margin="4,14,0,0" TextWrapping="Wrap" TextTrimming="None"
                            Text="Level bars show what each device is playing or hearing right now. Microphones only show a level while an app is listening."/>
-                <!-- Mute and default for each sound device, with their triggers; filled in code. -->
-                <StackPanel x:Name="AudioFeatures" Margin="0,24,12,0"/>
+
             </StackPanel>
         </ScrollViewer>
 
@@ -411,7 +417,8 @@
                 </StackPanel>
                 <ItemsControl x:Name="ControllerList" ItemTemplate="{StaticResource ControllerCard}" Focusable="False" Margin="0,0,12,0">
                     <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate><ui:AdaptiveGrid MinItemWidth="300"/></ItemsPanelTemplate>
+                        <!-- Wide enough for a controller's functions when opened -->
+                        <ItemsPanelTemplate><ui:AdaptiveGrid MinItemWidth="620"/></ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                 </ItemsControl>
                 <Border x:Name="ControllerEmpty" Style="{StaticResource Card}" Margin="0,0,12,0" BorderBrush="{StaticResource Line2Brush}" Visibility="Collapsed">
@@ -425,8 +432,6 @@
                         </StackPanel>
                     </StackPanel>
                 </Border>
-                <!-- Mouse mode for Xbox controllers; filled in code. -->
-                <StackPanel x:Name="ControllerFeatures" Margin="0,12,12,0"/>
 
                 <ui:AdaptiveGrid MinItemWidth="400" Margin="0,28,12,0">
                     <Border Style="{StaticResource Card}" Padding="10,16,10,10">
