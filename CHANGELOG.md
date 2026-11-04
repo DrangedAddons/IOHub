@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.1
+- **A controller's functions open when clicked.** Its "1 function" button did nothing until you left the Devices page
+  and came back; the same went for an LG TV's display card. Sound devices weren't affected.
+
 ## 0.8.0
 - **Device functions fold into the devices.** Instead of the *Show functions* switch and a table per tab, each device
   that can be changed has a "2 functions · 1 trigger" button. It opens that device's functions underneath (what it is,

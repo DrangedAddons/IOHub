@@ -80,7 +80,8 @@ public partial class DevicesPage : UserControl
     {
         ShowError(VideoError, _hub.DisplayError, "Couldn't read displays");
         var displays = _hub.Displays;
-        DisplayList.ItemsSource = displays;
+        // A fresh list each time: given the same one again, the list wouldn't redraw (a device's functions opened or closed).
+        DisplayList.ItemsSource = displays.ToList();
         LayoutMap.SetDisplays(displays);
         int active = displays.Count(d => d.IsActive), standby = displays.Count - active;
         VideoCount.Text = displays.Count.ToString();
@@ -115,7 +116,7 @@ public partial class DevicesPage : UserControl
     {
         ShowError(InputError, _hub.InputError, "Couldn't read input devices");
         var snap = _hub.Input;
-        ControllerList.ItemsSource = snap.Controllers;
+        ControllerList.ItemsSource = snap.Controllers.ToList(); // fresh, so it redraws (see ShowDisplays)
         KeyboardList.ItemsSource = snap.Keyboards;
         MouseList.ItemsSource = snap.Mice;
         ControllerEmpty.Visibility = snap.Controllers.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
