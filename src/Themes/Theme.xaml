@@ -390,18 +390,37 @@
         <Setter Property="Cursor" Value="Hand"/>
         <Setter Property="Template">
             <Setter.Value>
+                <!-- An item with items of its own opens them in a popup to the right (PART_Popup is what WPF opens). -->
                 <ControlTemplate TargetType="MenuItem">
-                    <Border x:Name="Bg" Background="Transparent" CornerRadius="6" Padding="10,7">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="26"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <ContentPresenter ContentSource="Icon" VerticalAlignment="Center" HorizontalAlignment="Left"/>
-                            <ContentPresenter Grid.Column="1" ContentSource="Header" RecognizesAccessKey="True" VerticalAlignment="Center"/>
-                        </Grid>
-                    </Border>
+                    <Grid>
+                        <Border x:Name="Bg" Background="Transparent" CornerRadius="6" Padding="10,7">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="26"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <ContentPresenter ContentSource="Icon" VerticalAlignment="Center" HorizontalAlignment="Left"/>
+                                <ContentPresenter Grid.Column="1" ContentSource="Header" RecognizesAccessKey="True" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="Arrow" Grid.Column="2" Text="&#xE76C;" FontFamily="{StaticResource IconFont}" FontSize="9"
+                                           Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="14,1,0,0" Visibility="Collapsed"/>
+                            </Grid>
+                        </Border>
+                        <Popup x:Name="PART_Popup" Placement="Right" HorizontalOffset="6" VerticalOffset="-5" AllowsTransparency="True" Focusable="False"
+                               PopupAnimation="None" IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}">
+                            <Border Background="#1F232B" BorderBrush="{StaticResource Line2Brush}" BorderThickness="1" CornerRadius="10" Padding="4" MinWidth="190"
+                                    TextElement.Foreground="{StaticResource TextBrush}" TextElement.FontFamily="{StaticResource UiFont}" TextElement.FontSize="13">
+                                <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                            </Border>
+                        </Popup>
+                    </Grid>
                     <ControlTemplate.Triggers>
+                        <Trigger Property="HasItems" Value="True">
+                            <Setter TargetName="Arrow" Property="Visibility" Value="Visible"/>
+                        </Trigger>
+                        <Trigger Property="IsSubmenuOpen" Value="True">
+                            <Setter TargetName="Bg" Property="Background" Value="#14FFFFFF"/>
+                        </Trigger>
                         <Trigger Property="IsHighlighted" Value="True">
                             <Setter TargetName="Bg" Property="Background" Value="#14FFFFFF"/>
                         </Trigger>

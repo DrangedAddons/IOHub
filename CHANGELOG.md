@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.1
+- **The device menu opens.** On the Triggers page, *Change a device* → *Pick a device and what to change* listed the
+  kinds of device, but clicking one did nothing: the app's menu style had no room for a submenu. Menus now open their
+  submenus to the right (Controllers → your controller → Mouse mode → Toggle), with an arrow on items that have more.
+
 ## 0.6.0
 - **The profile picker is a THEN choice now.** *Profile picker* and *Controller picker* are no longer separate trigger
   types: a *Key gesture* or *Controller buttons* trigger's THEN is *Switch to a profile*, *Pick a profile* or *Change
