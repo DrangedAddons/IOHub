@@ -18,7 +18,7 @@
             <StackPanel>
                 <TextBlock Text="Triggers" Style="{StaticResource PageTitle}"/>
                 <TextBlock Foreground="{StaticResource MutedBrush}" Margin="0,6,0,0" TextWrapping="Wrap"
-                           Text="What switches profiles for you: a hotkey, a key gesture, or an integration like Steam Big Picture. They keep working with the window closed."/>
+                           Text="Keys, controller buttons or an integration like Steam Big Picture that switch profiles or change a device for you. They keep working with the window closed."/>
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,0,0">
                 <!-- Layout switcher; each icon is a tiny drawing of the layout. -->
