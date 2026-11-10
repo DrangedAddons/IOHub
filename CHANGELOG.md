@@ -1,101 +1,34 @@
 # Changelog
 
-## 0.9.0-beta.10
-- **Splashing around you doesn't rumble.** Someone jumping or landing in the water makes a splash that starts much
-  like the bite, and on High it sometimes rumbled. The trigger now also compares the sound with WoW's ten
-  jump/land-in-water splashes, listens 0.3 s longer, and only rumbles if it's closer to the bite. switch.log says when
-  it ignores one (*ignored, sounds like someone jumping or landing in the water*).
-  - Walking or running through water (player or creature footsteps) never came close to the bite in testing, on any
-    sensitivity.
-  - Tested on WoW's own sound files: every bite still rumbled, also with someone walking through it, and none of the
-    jumps, landings or footsteps did.
-  - The rumble now comes about 0.6 s into the splash instead of 0.3 s.
-- **Set the threshold on the meter.** Drag on the *WoW sound* meter of a WoW fishing bite trigger to put a line at the
-  quietest splash that rumbles; anything under it is ignored. A grey tick holds the loudest of the last two seconds and
-  a green one marks your last bite, so you can see where splashes land. *Auto* goes back to ignoring splashes far
-  quieter than yours. The meter now shows even before WoW is running.
-
-## 0.9.0-beta.9
-- **Other anglers' splashes stay ignored after an update or restart.** Beta.8 forgot how loud your splashes are
-  whenever IO Hub restarted, then learned again from the next few rumbles, half of them someone else's. Their
-  splashes pulled your usual level down until theirs rumbled again.
-  - Your usual level is now the louder end of what it learned (75th percentile), so someone else's can't drag it
-    down, and it's saved (wow-splash-levels.txt), so it carries over restarts and updates.
-  - Ignored when 20 dB or more quieter than yours (was 18). Replayed on today's two sessions beside another angler,
-    with a restart in the middle: all of theirs ignored, none of yours.
-
-## 0.9.0-beta.8
-- **Other anglers' splashes are ignored.** Your bobber is the closest, so your splash is the loudest. The trigger
-  learns how loud your last 15 splashes were and ignores one 18 dB or more quieter than the usual: someone else's,
-  further off. switch.log says so (*ignored a splash 25 dB quieter than yours, someone else's*).
-  - An ignored splash doesn't hold off the next one either. Before, someone else's splash could rumble and then your
-    own bite a second or two later was skipped.
-  - Replayed on a session fishing next to another player: every one of their splashes ignored, all of yours rumbled,
-    including two that had been skipped. A splash louder than yours always counts, so someone fishing right on top
-    of your bobber still can.
-
-## 0.9.0-beta.7
-- **Rumble patterns.** Devices → the controller's functions → *Rumble settings*: pick a pattern (Single, Double,
-  Triple, Long buzz, Heartbeat, Rising, Flutter), a strength (Light, Medium, Strong) and a length (Short, Normal,
-  Long). Picking one plays it, and *Try it* plays it again. Every trigger that rumbles plays what's set here.
-  - Rumble is now one action, *Rumble*, instead of a strength per trigger. Your old trigger's strength carries over
-    as the setting, with the double buzz it always had.
-- **Misses are logged.** Every loud sound after quiet that's anywhere near a splash but doesn't rumble now gets a
-  line in switch.log with its closest match (*no rumble, closest was match 0.84, tone off by 6.1 dB…*). A missed bite
-  shows how far off it was without having to record.
-
-## 0.9.0-beta.6
-- **WoW fishing bite recognises the splash itself.** It used to take any loud sound after a quiet spell. It now
-  captures WoW's sound and compares every 10 ms against the three bite splashes WoW plays (sound kit 3355): how the
-  loudness builds over the first 0.4 s, and how the sound splits from low to high. The cast, reeling in, looting and
-  most fight and town sounds don't match. It fires about 0.4 s into the splash.
-  - Tested on WoW's own sound files mixed into a fake session at different volumes, muffled and over noise: every
-    splash caught, nothing else. Not tried in game yet.
-  - Sensitivity now sets how close a match must be. One bite per splash: 3 s before the next.
-  - Another angler's splash plays the same sound, so it still counts. Fish a little away from others.
-  - Needs Windows 11 to capture WoW's sound. Elsewhere it goes by level as before.
-  - Recordings also list *near* matches, at most one a second, to tune the limits from.
-
-## 0.9.0-beta.5
-- **Record WoW's sound** (WoW fishing bite trigger): records WoW's sound only, nothing from other apps, to a WAV,
-  with a text file beside it listing every time the trigger thought it heard a bite. It's for tuning the detection
-  against the real splash. *Open folder* shows the recordings. Stops by itself after 15 minutes (about 11 MB a minute).
-  Needs Windows 11.
-  - Your clicks, keys and controller presses are bookmarked in that list too, so clicking the bobber just after the
-    splash marks where the real bites were. Typing keys are listed only as *a typing key*, never which one.
-- **Rumble feels the same every time.** Each buzz starts with a short strong kick, then holds the chosen strength.
-  Light used to sometimes barely spin the motors.
-- **Fewer missed bites.** After a hit the trigger ignores sounds for 2.5 s instead of 4 s. When a cast was mistaken
-  for a bite, a fish biting soon after it used to be ignored.
-
-## 0.9.0-beta.4
-- **FishIO companion addon.** The WoW fishing bite trigger now says whether FishIO is installed, and in which WoW
-  version (*0.1.0 in WoW Forever*). FishIO turns WoW's music, ambience and chatter off while a fishing pole is in hand,
-  so the splash isn't drowned out. The controller's functions on the Devices page say the same while you have a WoW
-  fishing bite trigger.
-  - IO Hub finds WoW from the running game, Blizzard's install path in the registry, or the default folder, and looks
-    in every version's AddOns folder. It can't tell whether the addon is turned on in game.
-
-## 0.9.0-beta.3
-- **WoW fishing bite hears WoW.** In beta.2 it always said *WoW not running*: the listener couldn't get Windows' sound
-  device list, because the Devices page had already made it under its own name and .NET wouldn't hand it over. It
-  now asks for it in a way that works either way, and listens on the app's main thread like the other sound meters.
-- switch.log notes when it starts and stops hearing WoW, and any error looking for it.
-
-## 0.9.0-beta.2
-- **WoW fishing bite is a trigger.** On the Triggers page, *New trigger* → Integrations → *WoW fishing bite*, next to
-  Steam Big Picture. It fires when your bobber splashes in World of Warcraft. WoW gives addons no event for the bite,
-  so IO Hub listens to WoW's own sound (its audio session, so music or Discord in other apps don't count) and only
-  takes a splash after a couple of quiet seconds. Fights, towns and looting don't set it off.
-  - Its WHEN has a sensitivity (Low, Normal, High), shows whether WoW is running, and a live level meter of WoW's
-    sound to tune it by.
-  - A new trigger starts out as *Change a device* → controller → *Rumble: Medium*, and can do anything else a
-    trigger can (switch a profile, mute a mic…). It doesn't show a notice card over the game.
-  - Each splash is written to switch.log with its level and the background level.
-  - Known: casting after standing still for a couple of seconds can buzz too, since it's as loud as the bite.
-- **Rumble** is a new controller function (Light, Medium, Strong): two short buzzes on every Xbox controller. It's
-  under the controller's functions on the Devices page, with the triggers that use it.
-- The separate Integrations page from beta.1 is gone; integrations live on the Triggers page.
+## 0.9.0
+- **WoW fishing bite trigger.** On the Triggers page, *New trigger* → Integrations → *WoW fishing bite*, next to Steam
+  Big Picture. It fires when your bobber splashes in World of Warcraft, and starts out rumbling your controller. It can
+  do anything else a trigger can (switch a profile, mute a mic…) and doesn't show a notice card over the game.
+  - WoW gives addons no event for the bite, so IO Hub listens to WoW's own sound (nothing from other apps) and
+    recognises the bite splash itself: every 10 ms it compares how the loudness builds and how the sound splits from
+    low to high against the three splashes WoW plays for a bite (sound kit 3355). Casting, reeling in, looting, fights
+    and towns don't match. It rumbles about 0.6 s into the splash.
+  - **Someone jumping, landing or walking in the water** doesn't rumble: the sound is also compared with WoW's
+    jump/land-in-water splashes, and only rumbles if it's closer to the bite. Footsteps in water never come close.
+  - **Other anglers' splashes** sound the same but quieter, since your bobber is the closest. The trigger learns how
+    loud your splashes are and ignores one 20 dB or more quieter. What it learned is kept across restarts. An ignored
+    splash doesn't hold off your own bite either.
+  - **Sensitivity** (Low, Normal, High) sets how close to the bite a sound must be. One bite per splash.
+  - **WoW sound meter**, live, to tune by. Drag on it to set the quietest splash that rumbles yourself; a grey tick holds
+    the loudest of the last two seconds and a green one marks your last bite. *Auto* goes back to the learned level.
+  - **Record WoW's sound** saves WoW's sound only to a WAV (*Open folder* shows them), with a list of every detection
+    and every click, key or controller press, so clicking the bobber after each splash marks the real bites. Typing
+    keys are listed only as *a typing key*. Stops by itself after 15 minutes, about 11 MB a minute.
+  - switch.log notes each splash heard, each one ignored and why, and each near miss with how far off it was.
+  - Matching the sound needs Windows 11. Elsewhere it goes by level: a loud sound after a couple of quiet seconds.
+- **FishIO companion addon.** The trigger, and the controller's functions on the Devices page, say whether FishIO is
+  installed and in which WoW version (*0.1.0 in WoW Forever*). FishIO turns WoW's music, ambience and chatter off
+  while a fishing pole is in hand, so the splash stands out. IO Hub finds WoW from the running game, Blizzard's
+  install path or the default folder. It can't tell whether the addon is turned on in game.
+- **Rumble** is a new controller function: a buzz on every Xbox controller. Devices → the controller's functions →
+  *Rumble settings* sets the pattern (Single, Double, Triple, Long buzz, Heartbeat, Rising, Flutter), strength (Light,
+  Medium, Strong) and length (Short, Normal, Long) for every trigger that rumbles. Picking one plays it; *Try it*
+  plays it again. Each buzz starts with a short kick so Light still spins the motors.
 
 ## 0.8.1
 - **A controller's functions open when clicked.** Its "1 function" button did nothing until you left the Devices page
