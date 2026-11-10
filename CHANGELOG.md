@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.0-beta.9
+- **Other anglers' splashes stay ignored after an update or restart.** Beta.8 forgot how loud your splashes are
+  whenever IO Hub restarted, then learned again from the next few rumbles, half of them someone else's. Their
+  splashes pulled your usual level down until theirs rumbled again.
+  - Your usual level is now the louder end of what it learned (75th percentile), so someone else's can't drag it
+    down, and it's saved (wow-splash-levels.txt), so it carries over restarts and updates.
+  - Ignored when 20 dB or more quieter than yours (was 18). Replayed on today's two sessions beside another angler,
+    with a restart in the middle: all of theirs ignored, none of yours.
+
 ## 0.9.0-beta.8
 - **Other anglers' splashes are ignored.** Your bobber is the closest, so your splash is the loudest. The trigger
   learns how loud your last 15 splashes were and ignores one 18 dB or more quieter than the usual: someone else's,

@@ -71,10 +71,10 @@ public sealed class WowFishing : IDisposable
     const int MatchCooldownMs = 3000;
 
     /// <summary>
-    /// A splash this much quieter than your usual one is another angler's. In a session next to someone, yours were up to
-    /// 14 dB under your usual and theirs 22 dB or more, so this sits between.
+    /// A splash this much quieter than your usual one is another angler's. Replayed on two sessions next to someone
+    /// (yours peaked at -7 to -28 dBFS, theirs -36 to -58), 18 to 22 all split them cleanly; this sits in the middle.
     /// </summary>
-    const float OtherAnglerDb = 18;
+    const float OtherAnglerDb = 20;
     /// <summary>How many of your recent splashes set your usual level.</summary>
     const int YourSplashes = 15;
 
@@ -188,19 +188,6 @@ public sealed class WowFishing : IDisposable
         SplashScore? burstBest = null;
         long burstStart = 0, burstLastLoud = 0;
         bool burstHit = false;
-        // How loud your splashes have been (the peak when each matched). Your bobber is the closest, so its splash is
-        // the loudest; another angler's is further off and well quieter. Only splashes that rumbled count, and only a
-        // quieter splash is ever ignored, so a few of someone else's at the start can't lock out yours.
-        var yourPeaks = new List<float>();
-
-        // Your usual splash level when this one is far quieter than it, so someone else's; otherwise null.
-        float? OtherAngler(float peakDb)
-        {
-            if (yourPeaks.Count < 3) return null;
-            var sorted = yourPeaks.Order().ToList();
-            float yours = sorted[sorted.Count / 2];
-            return peakDb < yours - OtherAnglerDb ? yours : null;
-        }
 
         void OnFrame(SplashScore? scored)
         {
@@ -229,8 +216,7 @@ public sealed class WowFishing : IDisposable
                 Recorder.Mark($"detected: {score}");
                 var id = rule.Id;
                 ui.BeginInvoke(() => Bite?.Invoke(id));
-                yourPeaks.Add(score.LevelDb);
-                if (yourPeaks.Count > YourSplashes) yourPeaks.RemoveAt(0);
+                AddYourPeak(score.LevelDb);
             }
             // Close calls go in a recording too, at most one a second, to see where the line should be.
             if (!any && score.Corr >= 0.6f && score.ShapeDb <= 9 && score.RiseDb >= 2 && now - lastNear >= 1000)
@@ -291,6 +277,53 @@ public sealed class WowFishing : IDisposable
         ears.Thread.SetApartmentState(ApartmentState.MTA);
         _ears = ears;
         ears.Thread.Start();
+    }
+
+    // ---------------- telling your splash from someone else's ----------------
+
+    // How loud your splashes have been (the peak when each matched). Your bobber is the closest, so its splash is the
+    // loudest; another angler's is further off and well quieter. Only splashes that rumbled count, and only a quieter
+    // splash is ever ignored. "Your usual" is the 75th percentile, not the middle: until it has learned, some of the
+    // rumbles are someone else's, and those mustn't drag it down (beta.8 after an update: half were, and theirs got
+    // through). Saved to a file, so an update or restart doesn't start from nothing.
+    readonly List<float> _yourPeaks = LoadPeaks();
+    readonly object _peaksGate = new();
+    static string PeaksFile => System.IO.Path.Combine(AppInfo.DataDir, "wow-splash-levels.txt");
+
+    /// <summary>Your usual splash level when this one is far quieter than it, so someone else's; otherwise null.</summary>
+    float? OtherAngler(float peakDb)
+    {
+        float yours;
+        lock (_peaksGate)
+        {
+            if (_yourPeaks.Count < 3) return null;
+            var sorted = _yourPeaks.Order().ToList();
+            yours = sorted[Math.Min(sorted.Count - 1, sorted.Count * 3 / 4)];
+        }
+        return peakDb < yours - OtherAnglerDb ? yours : null;
+    }
+
+    void AddYourPeak(float peakDb)
+    {
+        string text;
+        lock (_peaksGate)
+        {
+            _yourPeaks.Add(peakDb);
+            if (_yourPeaks.Count > YourSplashes) _yourPeaks.RemoveAt(0);
+            text = string.Join("\n", _yourPeaks.Select(p => p.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)));
+        }
+        try { System.IO.File.WriteAllText(PeaksFile, text); } catch { }
+    }
+
+    static List<float> LoadPeaks()
+    {
+        try
+        {
+            return System.IO.File.ReadAllLines(PeaksFile)
+                .Select(l => float.TryParse(l, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : float.NaN)
+                .Where(v => !float.IsNaN(v)).TakeLast(YourSplashes).ToList();
+        }
+        catch { return []; }
     }
 
     void StopEars()
