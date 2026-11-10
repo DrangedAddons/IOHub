@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.9.1
+## 0.10.0-beta.1
 - **IO Hub installs FishIO.** IO Hub carries the FishIO addon inside the exe and updates installed copies when it
   starts with a newer one, so there's nothing to download. On the WoW fishing bite trigger, and under the controller's
   functions on the Devices page:
@@ -11,8 +11,6 @@
   - A copy with `.git` in its folder is a development copy: shown, never changed or removed.
   - FishIO is no longer in the DrangedAddons manager, so the two don't fight over its folder. Its source moved into
     this repo (addons/FishIO).
-
-## 0.10.0-beta.1
 - **PlayStation and Switch controllers work without extra software.** IO Hub reads DualShock 4, DualSense (and
   DualSense Edge), Switch Pro Controllers and Joy-Cons itself, over USB or Bluetooth. No DS4Windows, BetterJoy or Steam
   needed. They do everything an Xbox controller does here:
