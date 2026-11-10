@@ -52,7 +52,7 @@ public partial class MainWindow : Window
         _switcher.Notice += (title, detail, color) => { if (_settings.ShowNotices) _toast.Show(title, detail, color: color); };
         _hub.Refreshed += _switcher.Observe;
         _mouse = new ControllerMouse(_settings);
-        _fishing = new WowFishing();
+        _fishing = new WowFishing(Dispatcher);
         _features = new FeatureService(_hub, _profiles, _switcher, _mouse);
         _engine = new TriggerEngine(_profiles, _switcher, _features, _fishing, _toast, Dispatcher, () => ProfileMatcher.Active(_profiles, _hub));
 

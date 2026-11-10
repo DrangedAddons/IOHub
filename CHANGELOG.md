@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.0-beta.3
+- **WoW fishing bite hears WoW.** In beta.2 it always said *WoW not running*: the listener couldn't get Windows' sound
+  device list, because the Devices page had already made it under its own name and .NET wouldn't hand it over. It
+  now asks for it in a way that works either way, and listens on the app's main thread like the other sound meters.
+- switch.log notes when it starts and stops hearing WoW, and any error looking for it.
+
 ## 0.9.0-beta.2
 - **WoW fishing bite is a trigger.** On the Triggers page, *New trigger* → Integrations → *WoW fishing bite*, next to
   Steam Big Picture. It fires when your bobber splashes in World of Warcraft. WoW gives addons no event for the bite,
