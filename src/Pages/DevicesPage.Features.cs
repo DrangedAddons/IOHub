@@ -201,10 +201,13 @@ public partial class DevicesPage
     /// With a WoW fishing bite trigger set up, whether its companion addon is installed: a line under the controller's
     /// functions, since the rumble is what it's for. Null without such a trigger.
     /// </summary>
+    /// <summary>"Manage in Addons" was clicked.</summary>
+    public event Action? OpenAddons;
+
     UIElement? FishIONote()
     {
         if (_profiles?.Data.Triggers.Any(t => t.Kind == TriggerKind.WowFishingBite) != true) return null;
-        return TriggersPage.FishIOControls(Render);
+        return AddonsPage.FishIOStatus(() => OpenAddons?.Invoke());
     }
 
     // ---------------- mouse mode settings (in the controller's functions) ----------------

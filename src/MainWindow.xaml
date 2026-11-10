@@ -66,6 +66,7 @@
                     <RadioButton x:Name="DevicesNav" Style="{StaticResource NavItem}" Tag="&#xE772;" Content="Devices" Checked="Nav_Checked"/>
                     <RadioButton x:Name="ProfilesNav" Style="{StaticResource NavItem}" Tag="&#xE716;" Content="Profiles" Checked="Nav_Checked"/>
                     <RadioButton x:Name="TriggersNav" Style="{StaticResource NavItem}" Tag="&#xE945;" Content="Triggers" Checked="Nav_Checked"/>
+                    <RadioButton x:Name="AddonsNav" Style="{StaticResource NavItem}" Tag="&#xEA86;" Content="Addons" Checked="Nav_Checked"/>
                     <RadioButton Style="{StaticResource NavItem}" Tag="&#xE786;" IsEnabled="False">
                         <DockPanel>
                             <TextBlock DockPanel.Dock="Right" Text="Soon" FontSize="10.5" Foreground="{StaticResource FaintBrush}" VerticalAlignment="Center"/>

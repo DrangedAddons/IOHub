@@ -1,6 +1,9 @@
 # Changelog
 
 ## 0.10.0-beta.2
+- **Addons page.** FishIO is managed on its own page in the sidebar, after Triggers, instead of inside the WoW
+  fishing bite trigger. The trigger and the controller's functions on the Devices page just say whether it's installed,
+  with *Manage in Addons*.
 - **FishIO's controls are one row.** A dropdown of every WoW version IO Hub finds, each with FishIO's state there
   (*0.1.0 installed*, *not installed*, *development copy*), then *Install* (or *Update*) and *Open folder*. Reinstall,
   Remove and Copy folder path are in the *…* menu. A line underneath says which FishIO is there and where, plus the

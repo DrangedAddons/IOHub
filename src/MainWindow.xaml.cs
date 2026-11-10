@@ -22,6 +22,7 @@ public partial class MainWindow : Window
     readonly ProfilesPage _profilesPage;
     readonly TriggersPage _triggersPage;
     readonly SettingsPage _settingsPage;
+    readonly AddonsPage _addonsPage = new();
     readonly ProfileSwitcher _switcher;
     readonly ControllerMouse _mouse;
     readonly WowFishing _fishing;
@@ -70,6 +71,8 @@ public partial class MainWindow : Window
         // Devices page → Triggers page: a new trigger for a device feature, or an existing one.
         _devicesPage.AddTrigger += (f, action, value) => { TriggersNav.IsChecked = true; _triggersPage.AddForFeature(f, action, value); };
         _devicesPage.OpenTrigger += id => { TriggersNav.IsChecked = true; _triggersPage.Open(id); };
+        _devicesPage.OpenAddons += () => AddonsNav.IsChecked = true;
+        _triggersPage.OpenAddons += () => AddonsNav.IsChecked = true;
         _updates = new UpdateChecker(_settings, Dispatcher);
         _updates.Found += OnUpdateFound;
         _settingsPage = new SettingsPage(_settings, _profiles, _engine, _hub, _updates, startInTray => _ = InstallUpdate(startInTray), Quit);
@@ -142,6 +145,7 @@ public partial class MainWindow : Window
         PageHost.Content = sender == ProfilesNav ? _profilesPage
             : sender == DevicesNav ? _devicesPage
             : sender == TriggersNav ? _triggersPage
+            : sender == AddonsNav ? _addonsPage
             : sender == SettingsNav ? _settingsPage
             : _overviewPage;
     }
