@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.0-beta.7
+- **Misses are logged.** Every loud sound after quiet that's anywhere near a splash but doesn't rumble now gets a
+  line in switch.log with its closest match (*no rumble, closest was match 0.84, tone off by 6.1 dB…*). A missed bite
+  shows how far off it was without having to record.
+
 ## 0.9.0-beta.6
 - **WoW fishing bite recognises the splash itself.** It used to take any loud sound after a quiet spell. It now
   captures WoW's sound and compares every 10 ms against the three bite splashes WoW plays (sound kit 3355): how the

@@ -176,11 +176,16 @@ public sealed class WowFishing : IDisposable
         var ui = _timer.Dispatcher;
         var matcher = new SplashMatcher();
         long nextQpc = 0, lastNear = 0;
+        // The sound burst going on now, for the miss log: its best score, when it started, and whether it rumbled.
+        SplashScore? burstBest = null;
+        long burstStart = 0, burstLastLoud = 0;
+        bool burstHit = false;
 
         void OnFrame(SplashScore? scored)
         {
-            if (scored is not { } score) return;
             long now = Environment.TickCount64;
+            TrackBurst(scored, now);
+            if (scored is not { } score) return;
             bool any = false;
             foreach (var rule in _rules)
             {
@@ -188,6 +193,7 @@ public sealed class WowFishing : IDisposable
                 any = true;
                 if (now - rule.LastHit < MatchCooldownMs) continue;
                 rule.LastHit = now;
+                burstHit = true;
                 SwitchLog.Write($"WoW fishing: splash heard ({score})");
                 Recorder.Mark($"detected: {score}");
                 var id = rule.Id;
@@ -199,6 +205,25 @@ public sealed class WowFishing : IDisposable
                 lastNear = now;
                 Recorder.Mark($"near: {score}");
             }
+        }
+
+        // Every loud sound that comes after quiet and doesn't rumble gets one switch.log line with its closest match,
+        // so a missed bite shows how far off it was without a recording. A burst ends after 0.5 s without a rise, or
+        // 3 s in, the length of a splash.
+        void TrackBurst(SplashScore? scored, long now)
+        {
+            bool loud = scored is { RiseDb: >= 4, LevelDb: >= -50 };
+            if (loud)
+            {
+                if (burstBest == null) { burstStart = now; burstHit = false; }
+                burstLastLoud = now;
+                var s = scored!.Value;
+                if (burstBest is not { } b || s.Corr - s.ShapeDb / 10 > b.Corr - b.ShapeDb / 10) burstBest = s;
+            }
+            if (burstBest is not { } best || (now - burstLastLoud < 500 && now - burstStart < 3000)) return;
+            // Only sounds anywhere near a splash, so fights and towns don't fill the log.
+            if (!burstHit && best.Corr >= 0.5f && best.ShapeDb <= 10) SwitchLog.Write($"WoW fishing: no rumble, closest was {best}");
+            burstBest = null;
         }
 
         ears.Thread = new Thread(() =>
