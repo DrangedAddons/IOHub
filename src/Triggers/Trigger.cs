@@ -96,6 +96,12 @@ public sealed class Trigger
     /// <summary>WoW fishing bite only: "low", "normal" or "high" (WowFishing.Sensitivities).</summary>
     public string Sensitivity { get; set; } = "normal";
 
+    /// <summary>
+    /// WoW fishing bite only: the quietest splash that rumbles, in dBFS, set on the sound meter. Null = automatic
+    /// (splashes far quieter than your usual one are someone else's).
+    /// </summary>
+    public float? MinLevelDb { get; set; }
+
     /// <summary>True for triggers with a start and an end (Big Picture); false for one-shot key presses.</summary>
     public bool HasEnd => Kind == TriggerKind.SteamBigPicture;
 

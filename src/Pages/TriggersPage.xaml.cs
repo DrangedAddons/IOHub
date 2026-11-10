@@ -469,28 +469,12 @@ public partial class TriggersPage : UserControl
         }
         panel.Children.Add(sensitivity);
 
-        // WoW's level, live while it's showing: watch it jump on the splash to judge the sensitivity.
-        if (listening)
-        {
-            var level = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
-            level.Children.Add(new TextBlock { Text = "WoW sound", Foreground = Res<Brush>("MutedBrush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) });
-            var meter = new ProgressBar { Style = Res<Style>("Meter"), Width = 180, VerticalAlignment = VerticalAlignment.Center };
-            level.Children.Add(meter);
-            var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
-            timer.Tick += (_, _) =>
-            {
-                float peak = _engine.Wow.Level;
-                double db = peak > 1e-5f ? 20 * Math.Log10(peak) : -100;
-                meter.Value = Math.Clamp((db + 60) / 60, 0, 1); // a 60 dB scale, so quiet ambience still moves it
-            };
-            meter.Loaded += (_, _) => timer.Start();
-            meter.Unloaded += (_, _) => timer.Stop();
-            panel.Children.Add(level);
-        }
+        panel.Children.Add(WowMeter(t, listening));
 
         panel.Children.Add(Note(!listening || _engine.Wow.MatchingSound
             ? "Listens to WoW's own sound, so other apps don't count, and matches it against the bite splash itself, so casting, reeling in, "
-              + "looting and fights don't set it off. Another angler's splash sounds the same, so fish a little away from others."
+              + "looting, fights and people splashing through the water don't set it off. Another angler's splash sounds the same but quieter, "
+              + "so splashes far quieter than yours are ignored, or set the threshold yourself on the meter."
             : "Listens to WoW's own sound, so other apps don't count. This Windows can't capture WoW's sound for matching the splash itself, "
               + "so it goes by level: it only takes a loud sound after a couple of quiet seconds."));
 
@@ -506,6 +490,85 @@ public partial class TriggersPage : UserControl
               + "Without it, turn Music off and Ambience down in WoW's Sound settings."));
 
         panel.Children.Add(WowRecording());
+    }
+
+    /// <summary>
+    /// WoW's sound level, live, on a 60 dB scale (-60 to 0 dBFS) so quiet ambience still moves it. Drag on it to set
+    /// the quietest splash that rumbles (the line); Auto goes back to ignoring splashes far quieter than yours. A thin
+    /// tick holds the loudest of the last two seconds, so a splash's height can be read off; a green one marks the last
+    /// splash that rumbled.
+    /// </summary>
+    UIElement WowMeter(Trigger t, bool listening)
+    {
+        const double W = 240, H = 10;
+        static double X(double db) => Math.Clamp((db + 60) / 60, 0, 1) * W;
+        static float Db(double x) => (float)Math.Round(Math.Clamp(x / W, 0, 1) * 60 - 60);
+
+        var box = new StackPanel { Margin = new Thickness(0, 10, 0, 0) };
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        row.Children.Add(new TextBlock { Text = "WoW sound", Foreground = Res<Brush>("MutedBrush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) });
+
+        var area = new Grid { Width = W, Height = 22, Background = Brushes.Transparent, Cursor = Cursors.SizeWE, VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = "Drag to set the quietest splash that rumbles. Splashes under the line are ignored." };
+        var meter = new ProgressBar { Style = Res<Style>("Meter"), Width = W, Height = H, VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false };
+        area.Children.Add(meter);
+        var marks = new Canvas { IsHitTestVisible = false };
+        area.Children.Add(marks);
+        Rectangle Tick(Brush brush, double width, double height) =>
+            new() { Width = width, Height = height, Fill = brush, RadiusX = 1, RadiusY = 1 };
+        var hold = Tick(Res<Brush>("MutedBrush"), 2, H);
+        var last = Tick(Res<Brush>("SuccessBrush"), 2, H);
+        var line = Tick(Res<Brush>("AccentBrush"), 3, 22);
+        foreach (var r in new[] { hold, last, line }) marks.Children.Add(r);
+        Canvas.SetTop(hold, (22 - H) / 2); Canvas.SetTop(last, (22 - H) / 2); Canvas.SetTop(line, 0);
+        row.Children.Add(area);
+
+        var label = new TextBlock { Style = Res<Style>("Muted"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
+        row.Children.Add(label);
+        var auto = new Button { Style = Res<Style>("GhostButton"), Padding = new Thickness(10, 2, 10, 3), Content = "Auto", Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = "Back to automatic: splashes far quieter than your own are someone else's." };
+        auto.Click += (_, _) => { t.MinLevelDb = null; Save(); };
+        row.Children.Add(auto);
+        box.Children.Add(row);
+
+        void ShowThreshold()
+        {
+            line.Visibility = t.MinLevelDb == null ? Visibility.Collapsed : Visibility.Visible;
+            if (t.MinLevelDb is { } min) Canvas.SetLeft(line, X(min) - 1.5);
+            label.Text = t.MinLevelDb is { } m ? $"Rumbles at {m:0} dBFS or louder" : "Threshold: automatic";
+            auto.Visibility = t.MinLevelDb == null ? Visibility.Collapsed : Visibility.Visible;
+        }
+        ShowThreshold();
+
+        // Drag: the line follows, and it's saved when let go.
+        area.MouseLeftButtonDown += (_, e) => { area.CaptureMouse(); t.MinLevelDb = Db(e.GetPosition(area).X); ShowThreshold(); e.Handled = true; };
+        area.MouseMove += (_, e) => { if (area.IsMouseCaptured) { t.MinLevelDb = Db(e.GetPosition(area).X); ShowThreshold(); } };
+        area.MouseLeftButtonUp += (_, _) => { if (!area.IsMouseCaptured) return; area.ReleaseMouseCapture(); Save(); };
+
+        double holdDb = -100;
+        long holdAt = 0;
+        var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+        timer.Tick += (_, _) =>
+        {
+            float peak = _engine.Wow.Level;
+            double db = peak > 1e-5f ? 20 * Math.Log10(peak) : -100;
+            meter.Value = Math.Clamp((db + 60) / 60, 0, 1);
+            long now = Environment.TickCount64;
+            if (db >= holdDb || now - holdAt > 2000) { holdDb = db; holdAt = now; }
+            hold.Visibility = holdDb > -60 ? Visibility.Visible : Visibility.Hidden;
+            Canvas.SetLeft(hold, X(holdDb) - 1);
+            last.Visibility = _engine.Wow.LastSplashDb is null ? Visibility.Hidden : Visibility.Visible;
+            if (_engine.Wow.LastSplashDb is { } s) Canvas.SetLeft(last, X(s) - 1);
+        };
+        if (listening)
+        {
+            meter.Loaded += (_, _) => timer.Start();
+            meter.Unloaded += (_, _) => timer.Stop();
+        }
+
+        box.Children.Add(Note("Drag on the meter to set the quietest splash that rumbles: the grey tick shows how loud the last couple of seconds got, "
+            + "the green one your last bite. Put the line above other anglers' splashes and under yours."));
+        return box;
     }
 
     /// <summary>

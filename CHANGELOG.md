@@ -10,6 +10,10 @@
   - Tested on WoW's own sound files: every bite still rumbled, also with someone walking through it, and none of the
     jumps, landings or footsteps did.
   - The rumble now comes about 0.6 s into the splash instead of 0.3 s.
+- **Set the threshold on the meter.** Drag on the *WoW sound* meter of a WoW fishing bite trigger to put a line at the
+  quietest splash that rumbles; anything under it is ignored. A grey tick holds the loudest of the last two seconds and
+  a green one marks your last bite, so you can see where splashes land. *Auto* goes back to ignoring splashes far
+  quieter than yours. The meter now shows even before WoW is running.
 
 ## 0.9.0-beta.9
 - **Other anglers' splashes stay ignored after an update or restart.** Beta.8 forgot how loud your splashes are

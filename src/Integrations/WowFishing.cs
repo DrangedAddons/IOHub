@@ -78,6 +78,9 @@ public sealed class WowFishing : IDisposable
     /// <summary>How many of your recent splashes set your usual level.</summary>
     const int YourSplashes = 15;
 
+    /// <summary>How loud the last splash that rumbled was, dBFS, for the meter. Null until one has.</summary>
+    public float? LastSplashDb { get; private set; }
+
     /// <summary>True while WoW's sound is being matched against the splash, false when it's going by level alone.</summary>
     public bool MatchingSound => _ears is { Running: true };
 
@@ -89,7 +92,7 @@ public sealed class WowFishing : IDisposable
     }
 
     /// <summary>The WoW triggers that are on, with their sensitivities. None stops listening. UI thread.</summary>
-    public void SetTriggers(IEnumerable<(string Id, string? Sensitivity)> triggers)
+    public void SetTriggers(IEnumerable<(string Id, string? Sensitivity, float? MinLevelDb)> triggers)
     {
         var list = triggers.ToList();
         var old = _listeners;
@@ -105,7 +108,7 @@ public sealed class WowFishing : IDisposable
         _rules = list.Select(t =>
         {
             var (corr, shape, rise) = MatchRule(t.Sensitivity);
-            return new Rule(t.Id, corr, shape, rise) { LastHit = oldRules.FirstOrDefault(r => r.Id == t.Id)?.LastHit ?? long.MinValue / 2 };
+            return new Rule(t.Id, corr, shape, rise, t.MinLevelDb) { LastHit = oldRules.FirstOrDefault(r => r.Id == t.Id)?.LastHit ?? long.MinValue / 2 };
         }).ToArray();
 
         if (_listeners.Length > 0 && !_timer.IsEnabled)
@@ -212,14 +215,18 @@ public sealed class WowFishing : IDisposable
                 if (score.Corr < rule.MinCorr || score.ShapeDb > rule.MaxShapeDb || score.RiseDb < rule.MinRiseDb) continue;
                 any = true;
                 if (now - rule.LastHit < MatchCooldownMs || pending?.Rules.Contains(rule) == true) continue;
-                // Someone else's bobber, further away: it doesn't rumble, and doesn't hold off the next splash either.
-                if (OtherAngler(score.LevelDb) is { } yours)
+                // Too quiet: under the threshold set on the meter, or (automatic) someone else's bobber, further away.
+                // It doesn't rumble, and doesn't hold off the next splash either.
+                string? quiet = rule.MinLevelDb is { } min
+                    ? score.LevelDb < min ? $"below the {min:0} dBFS threshold" : null
+                    : OtherAngler(score.LevelDb) is { } yours ? $"{yours - score.LevelDb:0} dB quieter than yours, someone else's" : null;
+                if (quiet != null)
                 {
                     burstHit = true;
                     if (now - lastIgnored < MatchCooldownMs) continue;
                     lastIgnored = now;
-                    SwitchLog.Write($"WoW fishing: ignored a splash {yours - score.LevelDb:0} dB quieter than yours, someone else's ({score})");
-                    Recorder.Mark($"ignored, someone else's: {score}");
+                    SwitchLog.Write($"WoW fishing: ignored a splash {quiet} ({score})");
+                    Recorder.Mark($"ignored, too quiet: {score}");
                     continue;
                 }
                 pending ??= new Candidate(score);
@@ -257,6 +264,7 @@ public sealed class WowFishing : IDisposable
                 ui.BeginInvoke(() => Bite?.Invoke(id));
             }
             AddYourPeak(c.First.LevelDb);
+            LastSplashDb = c.First.LevelDb;
         }
 
         // Every loud sound that comes after quiet and doesn't rumble gets one switch.log line with its closest match,
@@ -390,7 +398,7 @@ public sealed class WowFishing : IDisposable
     }
 
     /// <summary>A trigger's sensitivity as match limits. LastHit is only touched on the matcher's thread.</summary>
-    sealed record Rule(string Id, float MinCorr, float MaxShapeDb, float MinRiseDb)
+    sealed record Rule(string Id, float MinCorr, float MaxShapeDb, float MinRiseDb, float? MinLevelDb)
     {
         public long LastHit { get; set; }
     }
