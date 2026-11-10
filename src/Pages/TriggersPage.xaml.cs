@@ -348,7 +348,7 @@ public partial class TriggersPage : UserControl
             // What a bite is for: buzz the controller. Still changeable, but it starts out ready.
             if (kind == TriggerKind.WowFishingBite && !t.ChangesDevice && t.ProfileId == null
                 && _features.Find(FeatureService.ControllersId, "rumble") is { } rumble)
-                PickFeature(t, rumble, FeatureAction.Set, "medium");
+                PickFeature(t, rumble, FeatureAction.Run, null);
             Save();
         };
         return button;

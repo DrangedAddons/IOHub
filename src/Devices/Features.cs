@@ -62,6 +62,7 @@ public sealed class DeviceFeature
 
     public string Describe(FeatureAction action, string? value) => action switch
     {
+        _ when Kind == FeatureKind.Action => Title,
         FeatureAction.Toggle => $"{Title}: toggle",
         FeatureAction.On => $"{Title}: {OnLabel.ToLowerInvariant()}",
         FeatureAction.Off => $"{Title}: {OffLabel.ToLowerInvariant()}",
@@ -100,14 +101,14 @@ public sealed class FeatureService(DeviceHub hub, ProfileService profiles, Profi
                 _ => !mouse.IsOn,
             })),
         });
-        // Two short buzzes on every controller, e.g. for the WoW fishing bite trigger.
+        // A buzz on every controller, e.g. for the WoW fishing bite trigger. Its pattern, strength and length are set on
+        // the Devices page (Rumble settings), so a trigger's own action and value don't matter: old ones were "Set medium".
         list.Add(new DeviceFeature
         {
             Section = "Controllers", DeviceId = ControllersId,
             DeviceName = pads.Count == 1 ? pads[0].Name : "Xbox controllers",
-            Id = "rumble", Title = "Rumble", Kind = FeatureKind.Choice,
-            Choices = [.. Integrations.Rumble.Strengths.Select(s => new FeatureChoice(s.Value, s.Label))],
-            Run = (_, value) => { Integrations.Rumble.Pulse(value); return Task.FromResult<string?>(null); },
+            Id = "rumble", Title = "Rumble", Kind = FeatureKind.Action,
+            Run = (_, _) => { Integrations.Rumble.Play(); return Task.FromResult<string?>(null); },
         });
 
         // Paired LG TVs, connected or not (a TV that's off isn't detected, and that's when you'd turn it on).

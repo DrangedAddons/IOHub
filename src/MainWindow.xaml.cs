@@ -53,6 +53,9 @@ public partial class MainWindow : Window
         _hub.Refreshed += _switcher.Observe;
         _mouse = new ControllerMouse(_settings);
         _fishing = new WowFishing(Dispatcher);
+        // The rumble's pattern lives on the Devices page now. Before, each trigger had a strength: keep the first one's.
+        _settings.Rumble ??= Rumble.Setting.Parse(_profiles.Data.Triggers.FirstOrDefault(t => t.Feature == "rumble" && t.DeviceId == FeatureService.ControllersId)?.Value).ToString();
+        Rumble.Current = Rumble.Setting.Parse(_settings.Rumble);
         _features = new FeatureService(_hub, _profiles, _switcher, _mouse);
         _engine = new TriggerEngine(_profiles, _switcher, _features, _fishing, _toast, Dispatcher, () => ProfileMatcher.Active(_profiles, _hub));
 

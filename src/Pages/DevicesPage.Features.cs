@@ -25,6 +25,7 @@ public partial class DevicesPage
     public event Action<string>? OpenTrigger;
 
     const string MouseSettingsKey = FeatureService.ControllersId + ":settings";
+    const string RumbleSettingsKey = FeatureService.ControllersId + ":rumble";
 
     void InitFeatures(FeatureService features, Profiles.ProfileService profiles)
     {
@@ -114,8 +115,84 @@ public partial class DevicesPage
             _ => FeatureTable(features, functionWidth: 170, nowWidth: 190),
         });
         if (key == FeatureService.ControllersId && FishIONote() is { } fishio) stack.Children.Add(fishio);
+        if (key == FeatureService.ControllersId) stack.Children.Add(RumbleSettings());
         if (key == FeatureService.ControllersId) stack.Children.Add(MouseSettings());
         return stack;
+    }
+
+    // ---------------- rumble settings (in the controller's functions) ----------------
+
+    /// <summary>
+    /// The Rumble function's pattern, strength and length, for every trigger that rumbles. Picking one plays it, so
+    /// you feel what you picked.
+    /// </summary>
+    UIElement RumbleSettings()
+    {
+        bool open = IsOpen(RumbleSettingsKey);
+        var stack = new StackPanel { Margin = new Thickness(0, 10, 0, 0) };
+        stack.Children.Add(SettingsToggle("Rumble settings", "", RumbleSettingsKey, open));
+        if (!open) return stack;
+
+        var current = Integrations.Rumble.Current;
+        void Pick(Integrations.Rumble.Setting s)
+        {
+            Integrations.Rumble.Current = s;
+            _settings.Rumble = s.ToString();
+            _settings.Save();
+            Integrations.Rumble.Play(s);
+            Render();
+        }
+        UIElement Row(string title, IEnumerable<(string Value, string Label)> options, string selected, Func<string, Integrations.Rumble.Setting> with)
+        {
+            var row = new Grid { Margin = new Thickness(0, 10, 0, 0) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(80) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var label = new TextBlock { Text = title, Foreground = Res<Brush>("MutedBrush"), VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 4, 10, 0) };
+            Grid.SetColumn(label, 0); row.Children.Add(label);
+            var pills = new WrapPanel();
+            foreach (var (value, text) in options)
+            {
+                var pill = new ToggleButton { Style = Res<Style>("PillToggle"), Content = text, IsChecked = value == selected, Background = Res<Brush>("AccentBrush"), Margin = new Thickness(0, 0, 6, 6) };
+                pill.Click += (_, _) => Pick(with(value));
+                pills.Children.Add(pill);
+            }
+            Grid.SetColumn(pills, 1); row.Children.Add(pills);
+            return row;
+        }
+        stack.Children.Add(Row("Pattern", Integrations.Rumble.Patterns, current.Pattern, v => current with { Pattern = v }));
+        stack.Children.Add(Row("Strength", Integrations.Rumble.Strengths.Select(s => (s.Value, s.Label)), current.Strength, v => current with { Strength = v }));
+        stack.Children.Add(Row("Length", Integrations.Rumble.Lengths.Select(l => (l.Value, l.Label)), current.Length, v => current with { Length = v }));
+
+        var tryIt = new Button { Style = Res<Style>("GhostButton"), Padding = new Thickness(12, 4, 12, 5), Content = "Try it", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(80, 6, 0, 0) };
+        tryIt.Click += (_, _) => Integrations.Rumble.Play();
+        stack.Children.Add(tryIt);
+        stack.Children.Add(new TextBlock
+        {
+            Style = Res<Style>("Muted"), TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.None, Margin = new Thickness(0, 10, 0, 0),
+            Text = "Every trigger that rumbles plays this. Length stretches each buzz; Light can be hard to feel through a game's own rumble.",
+        });
+        return stack;
+    }
+
+    /// <summary>The "… settings" expander button under the controller's functions.</summary>
+    Button SettingsToggle(string text, string icon, string key, bool open)
+    {
+        var toggle = new Button
+        {
+            Style = Res<Style>("GhostButton"), Padding = new Thickness(10, 3, 10, 4), HorizontalAlignment = HorizontalAlignment.Left,
+            Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Children =
+                {
+                    new TextBlock { Text = icon, FontFamily = Res<FontFamily>("IconFont"), FontSize = 12, Foreground = Res<Brush>("MutedBrush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) },
+                    new TextBlock { Text = text, FontSize = 12 },
+                    new TextBlock { Text = open ? "" : "", FontFamily = Res<FontFamily>("IconFont"), FontSize = 9, Foreground = Res<Brush>("MutedBrush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 1, 0, 0) },
+                },
+            },
+        };
+        toggle.Click += (_, _) => SetOpen(key, !open);
+        return toggle;
     }
 
     // ---------------- FishIO (in the controller's functions) ----------------
@@ -327,6 +404,7 @@ public partial class DevicesPage
             FeatureKind.Choice => "Pick one",
             _ => f.State() == true ? "It's the default now" : "One-off action",
         };
+        if (f.DeviceId == FeatureService.ControllersId && f.Id == "rumble") detail = Integrations.Rumble.Current.Describe() + " (Rumble settings)";
         if (f.DeviceId == FeatureService.ControllersId && f.Id == "mouse" && _features!.Mouse.IsPaused) detail = "Paused: fullscreen app in front";
         if (f.DeviceId == FeatureService.ControllersId && f.Id == "mouse" && !_settings.ControllerMouse) detail = "Not allowed yet (Mouse mode settings)";
         cell.Children.Add(new TextBlock { Text = detail, Style = Res<Style>("Muted"), FontSize = 11.5, Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.None });
@@ -366,7 +444,8 @@ public partial class DevicesPage
     /// <summary>What a trigger does to this function, without repeating its name: "Toggle", "HDMI 2", "Toggle while held".</summary>
     static string ActionLabel(Trigger t, DeviceFeature f)
     {
-        var label = f.Actions.FirstOrDefault(a => a.Action == t.Action && a.Value == t.Value).Label ?? t.Action.ToString();
+        var label = f.Kind == FeatureKind.Action ? f.Title
+            : f.Actions.FirstOrDefault(a => a.Action == t.Action && a.Value == t.Value).Label ?? t.Action.ToString();
         return t.Gesture == GestureKind.WhileHeld ? $"{label} while held" : label;
     }
 

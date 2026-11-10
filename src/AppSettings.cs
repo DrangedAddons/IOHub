@@ -28,6 +28,12 @@ public sealed class AppSettings
     public int MouseSpeed { get; set; } = 1400;
     public bool MousePauseInFullscreen { get; set; } = true;
 
+    /// <summary>
+    /// How the controller's Rumble function buzzes, "pattern;strength;length" (Integrations.Rumble.Setting). Null until
+    /// set: then it's taken from a trigger's old strength-only rumble value, if there is one.
+    /// </summary>
+    public string? Rumble { get; set; }
+
     // Updates
     public bool CheckForUpdates { get; set; } = true;
     public bool InstallUpdatesAutomatically { get; set; }

@@ -1,6 +1,11 @@
 # Changelog
 
 ## 0.9.0-beta.7
+- **Rumble patterns.** Devices → the controller's functions → *Rumble settings*: pick a pattern (Single, Double,
+  Triple, Long buzz, Heartbeat, Rising, Flutter), a strength (Light, Medium, Strong) and a length (Short, Normal,
+  Long). Picking one plays it, and *Try it* plays it again. Every trigger that rumbles plays what's set here.
+  - Rumble is now one action, *Rumble*, instead of a strength per trigger. Your old trigger's strength carries over
+    as the setting, with the double buzz it always had.
 - **Misses are logged.** Every loud sound after quiet that's anywhere near a splash but doesn't rumble now gets a
   line in switch.log with its closest match (*no rumble, closest was match 0.84, tone off by 6.1 dB…*). A missed bite
   shows how far off it was without having to record.
