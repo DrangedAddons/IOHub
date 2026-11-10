@@ -1,14 +1,20 @@
 # Changelog
 
-## 0.9.0-beta.1
-- **Integrations page, starting with World of Warcraft.** Each game gets a card listing its connections.
-  - *Fishing bite → rumble*: when the bobber splashes, every Xbox controller gives two short buzzes. WoW gives addons
-    no event for the bite, so IO Hub listens to WoW's own sound (its audio session, so music or Discord in other apps
-    don't count) and counts a splash only after a couple of quiet seconds. Fights, towns, casting and looting don't
-    set it off. Sensitivity (Low, Normal, High), rumble strength, a test button and a live level meter to tune it.
-    Each bite is written to switch.log.
-  - The same switch is a function on the controller (Devices → Input), so a trigger can turn it on or off too.
-  - Queue pop, ready check, low health and whisper are listed as coming soon.
+## 0.9.0-beta.2
+- **WoW fishing bite is a trigger.** On the Triggers page, *New trigger* → Integrations → *WoW fishing bite*, next to
+  Steam Big Picture. It fires when your bobber splashes in World of Warcraft. WoW gives addons no event for the bite,
+  so IO Hub listens to WoW's own sound (its audio session, so music or Discord in other apps don't count) and only
+  takes a splash after a couple of quiet seconds. Fights, towns and looting don't set it off.
+  - Its WHEN has a sensitivity (Low, Normal, High), shows whether WoW is running, and a live level meter of WoW's
+    sound to tune it by.
+  - A new trigger starts out as *Change a device* → controller → *Rumble: Medium*, and can do anything else a
+    trigger can (switch a profile, mute a mic…). It doesn't show a notice card over the game.
+  - Each splash is written to switch.log with its level and the background level.
+  - Known: casting after standing still for a couple of seconds can buzz too, since it's as loud as the bite.
+- **Rumble** is a new controller function (Light, Medium, Strong): two short buzzes on every Xbox controller. It's
+  under the controller's functions on the Devices page, with the triggers that use it.
+- The separate Integrations page from beta.1 is gone; integrations live on the Triggers page.
+
 ## 0.8.1
 - **A controller's functions open when clicked.** Its "1 function" button did nothing until you left the Devices page
   and came back; the same went for an LG TV's display card. Sound devices weren't affected.

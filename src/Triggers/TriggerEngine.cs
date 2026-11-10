@@ -26,6 +26,7 @@ public sealed class TriggerEngine : IDisposable
     readonly ControllerGestures _pad = new();
     readonly ControllerWatcher _controllers;
     readonly BigPictureWatcher _bigPicture;
+    readonly Integrations.WowFishing _wow;
     readonly DispatcherTimer _tick;
     readonly Stopwatch _clock = Stopwatch.StartNew();
 
@@ -49,7 +50,8 @@ public sealed class TriggerEngine : IDisposable
     /// <summary>Raised when something the Triggers page shows changes (last fired, Big Picture state).</summary>
     public event Action? StateChanged;
 
-    public TriggerEngine(ProfileService profiles, ProfileSwitcher switcher, Devices.FeatureService features, Toast toast, Dispatcher ui, Func<Profile?> activeProfile)
+    public TriggerEngine(ProfileService profiles, ProfileSwitcher switcher, Devices.FeatureService features, Integrations.WowFishing wow,
+        Toast toast, Dispatcher ui, Func<Profile?> activeProfile)
     {
         _profiles = profiles;
         _switcher = switcher;
@@ -57,6 +59,12 @@ public sealed class TriggerEngine : IDisposable
         _toast = toast;
         _ui = ui;
         _activeProfile = activeProfile;
+        _wow = wow;
+        _wow.Bite += id => Dispatch(() =>
+        {
+            if (_profiles.Data.Triggers.FirstOrDefault(t => t.Id == id && t.Enabled) is { } t) _ = Fire(t, starting: true);
+        });
+        _wow.StateChanged += () => Dispatch(() => StateChanged?.Invoke());
         _hook = new KeyboardHook(OnKey);
         _detector.Fired += tag => OnGesture((Trigger)tag);
         _detector.Released += tag => OnReleased((Trigger)tag);
@@ -74,6 +82,7 @@ public sealed class TriggerEngine : IDisposable
     }
 
     public bool BigPictureOpen => _bigPicture.IsOpen;
+    public Integrations.WowFishing Wow => _wow;
     /// <summary>Controllers connected, as far as the controller reader knows; null while it isn't running.</summary>
     public int? ControllersConnected => _controllers.IsRunning ? _controllers.ConnectedCount : null;
     public bool IsEngaged(Trigger t) => _engaged.ContainsKey(t.Id);
@@ -110,6 +119,8 @@ public sealed class TriggerEngine : IDisposable
 
         if (active.Any(t => t.Kind == TriggerKind.SteamBigPicture)) _bigPicture.Start();
         else _bigPicture.Stop();
+
+        _wow.SetTriggers(active.Where(t => t.Kind == TriggerKind.WowFishingBite).Select(t => (t.Id, (string?)t.Sensitivity)));
 
         // Forget switch-back state for triggers that were removed or turned off.
         foreach (var id in _engaged.Keys.Where(id => active.All(t => t.Id != id)).ToList()) _engaged.Remove(id);
@@ -243,7 +254,8 @@ public sealed class TriggerEngine : IDisposable
         string what = _features.Describe(t, withDevice: false);
         SwitchLog.Write($"Trigger {KeyNames.Describe(t)}: {_features.Describe(t, withDevice: true)}" + (starting ? "" : " (let go)") + (error != null ? $": {error}" : ""));
         if (error != null) _toast.Show("Couldn't change the device", error);
-        else if (t.Gesture != GestureKind.WhileHeld) _toast.Show(what, _features.Describe(t, withDevice: true));
+        // The fishing bite's rumble is its own notice; a card over the game every cast would be noise.
+        else if (t.Gesture != GestureKind.WhileHeld && t.Kind != TriggerKind.WowFishingBite) _toast.Show(what, _features.Describe(t, withDevice: true));
         StateChanged?.Invoke();
     }
 
@@ -411,6 +423,7 @@ public sealed class TriggerEngine : IDisposable
         _hook.Dispose();
         _controllers.Dispose();
         _bigPicture.Dispose();
+        _wow.Dispose();
         _tick.Stop();
     }
 }

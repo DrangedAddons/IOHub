@@ -7,94 +7,76 @@ namespace IOHub.Integrations;
 public enum WowListenState { Stopped, NoGame, Listening }
 
 /// <summary>
-/// World of Warcraft → "Rumble on fishing bite". Watches WoW's own sound (its audio sessions' peak meters, so music
-/// or voice chat from other apps don't count), spots the bite splash with <see cref="SplashDetector"/>, and rumbles
-/// every Xbox controller. WoW gives addons no event for the bite, which is why this goes by sound.
+/// The "WoW fishing bite" trigger's ears. Watches World of Warcraft's own sound (its audio sessions' peak meters, so
+/// music or voice chat from other apps don't count) and spots the bite splash with one <see cref="SplashDetector"/>
+/// per trigger, each at its own sensitivity. WoW gives addons no event for the bite, which is why this goes by sound.
 ///
-/// Runs on its own thread, only while the connection is on or the Integrations page is showing its meter. About
-/// 40 peak reads a second while WoW is running; one look for WoW every 3 seconds while it isn't.
+/// Runs on its own thread, only while a WoW trigger is on. About 40 peak reads a second while WoW is running; one
+/// look for WoW every 3 seconds while it isn't.
 /// </summary>
 public sealed class WowFishing : IDisposable
 {
-    readonly AppSettings _settings;
-    readonly SplashDetector _detector = new();
     readonly object _gate = new();
     Thread? _thread;
     CancellationTokenSource? _cts;
-    int _watchers;
+    volatile (string Id, SplashDetector Detector)[] _listeners = [];
+    volatile WowListenState _state;
+    volatile float _level;
 
-    /// <summary>On or off changed. Raised on the thread that changed it.</summary>
-    public event Action? Changed;
-    /// <summary>A bite was felt (and rumbled). Raised on the listening thread.</summary>
-    public event Action? Bite;
+    /// <summary>A trigger's splash was heard. Raised on the listening thread with the trigger's id.</summary>
+    public event Action<string>? Bite;
+    /// <summary>WoW started or stopped making sound (or listening stopped). Raised on the listening thread.</summary>
+    public event Action? StateChanged;
 
-    public WowFishing(AppSettings settings)
-    {
-        _settings = settings;
-        Update();
-    }
-
-    public bool IsOn => _settings.WowFishingRumble;
-
-    public volatile WowListenState State;
+    public WowListenState State => _state;
     /// <summary>WoW's sound level right now, 0..1.</summary>
-    public float Level => _detector.Level;
-    public DateTime? LastBite { get; private set; }
-    public int Bites { get; private set; }
+    public float Level => _level;
 
     public static readonly (string Value, string Label, float Db)[] Sensitivities =
         [("low", "Low", 18), ("normal", "Normal", 12), ("high", "High", 8)];
-    public static readonly (string Value, string Label, double Strength)[] Strengths =
-        [("light", "Light", 0.35), ("medium", "Medium", 0.65), ("strong", "Strong", 1.0)];
 
-    float ThresholdDb => Sensitivities.FirstOrDefault(s => s.Value == _settings.WowFishingSensitivity).Db is > 0 and var db ? db : 12;
-    public double Strength => Strengths.FirstOrDefault(s => s.Value == _settings.WowRumbleStrength).Strength is > 0 and var s ? s : 0.65;
+    public static float ThresholdDb(string? sensitivity) =>
+        Sensitivities.FirstOrDefault(s => s.Value == sensitivity).Db is > 0 and var db ? db : 12;
 
-    /// <summary>Turns the connection on or off. Returns an error message, or null (the shape device features use).</summary>
-    public string? Set(bool on)
+    /// <summary>The WoW triggers that are on, with their sensitivities. None stops listening.</summary>
+    public void SetTriggers(IEnumerable<(string Id, string? Sensitivity)> triggers)
     {
-        if (_settings.WowFishingRumble != on)
-        {
-            _settings.WowFishingRumble = on;
-            _settings.Save();
-            SwitchLog.Write($"WoW fishing rumble {(on ? "on" : "off")}");
-        }
-        Update();
-        Changed?.Invoke();
-        return null;
-    }
-
-    /// <summary>The Integrations page shows the live level, so it keeps listening while open even when the connection is off.</summary>
-    public void Watch(bool watching)
-    {
-        lock (_gate) _watchers = Math.Max(0, _watchers + (watching ? 1 : -1));
-        Update();
-    }
-
-    public void TestRumble() => Rumble.Pulse(Strength);
-
-    void Update()
-    {
-        bool want;
-        lock (_gate) want = IsOn || _watchers > 0;
         lock (_gate)
         {
-            if (want && _thread == null)
+            var old = _listeners;
+            _listeners = triggers.Select(t =>
+            {
+                // Keep a trigger's detector (and its background level) when only something else changed.
+                var d = old.FirstOrDefault(o => o.Id == t.Id).Detector ?? new SplashDetector();
+                d.ThresholdDb = ThresholdDb(t.Sensitivity);
+                return (t.Id, d);
+            }).ToArray();
+
+            if (_listeners.Length > 0 && _thread == null)
             {
                 var cts = _cts = new CancellationTokenSource();
                 _thread = new Thread(() => Listen(cts.Token)) { IsBackground = true, Name = "WoW fishing", Priority = ThreadPriority.AboveNormal };
                 _thread.SetApartmentState(ApartmentState.MTA);
                 _thread.Start();
             }
-            else if (!want && _thread != null)
-            {
-                _cts!.Cancel();
-                // Wait for it, so turning it straight back on never leaves two listeners sharing the detector.
-                _thread.Join(1000);
-                _thread = null;
-                _cts = null;
-            }
+            else if (_listeners.Length == 0 && _thread != null) StopLocked();
         }
+    }
+
+    void StopLocked()
+    {
+        _cts!.Cancel();
+        // Wait for it, so starting straight back up never leaves two listeners running.
+        _thread!.Join(1000);
+        _thread = null;
+        _cts = null;
+    }
+
+    void SetState(WowListenState state)
+    {
+        if (_state == state) return;
+        _state = state;
+        StateChanged?.Invoke();
     }
 
     // ---------------- listening thread ----------------
@@ -105,11 +87,10 @@ public sealed class WowFishing : IDisposable
         var isWow = new Dictionary<uint, bool>();
         IMMDeviceEnumerator? devices = null;
         try { devices = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom(); }
-        catch { State = WowListenState.Stopped; return; }
+        catch { return; }
 
         var clock = Stopwatch.StartNew();
         long nextScan = 0;
-        _detector.Reset();
         try
         {
             while (!stop.IsCancellationRequested)
@@ -121,23 +102,21 @@ public sealed class WowFishing : IDisposable
                     try { Scan(devices, sessions, isWow); } catch { }
                     // WoW can move to another sound device when you change it in its settings, so keep looking.
                     nextScan = now + (sessions.Count == 0 ? 3000 : 5000);
-                    if (sessions.Count == 0 && State != WowListenState.NoGame) _detector.Reset();
-                    State = sessions.Count == 0 ? WowListenState.NoGame : WowListenState.Listening;
+                    if (sessions.Count == 0 && _state != WowListenState.NoGame) foreach (var l in _listeners) l.Detector.Reset();
+                    SetState(sessions.Count == 0 ? WowListenState.NoGame : WowListenState.Listening);
                 }
-                if (sessions.Count == 0) { stop.WaitHandle.WaitOne(500); continue; }
+                if (sessions.Count == 0) { _level = 0; stop.WaitHandle.WaitOne(500); continue; }
 
                 float peak = 0;
                 foreach (var meter in sessions)
                     if (meter.GetPeakValue(out var p) == 0 && p > peak) peak = p;
 
-                _detector.ThresholdDb = ThresholdDb;
-                if (_detector.Feed(peak, now) && IsOn)
+                _level = peak;
+                foreach (var (id, detector) in _listeners)
                 {
-                    Rumble.Pulse(Strength);
-                    LastBite = DateTime.Now;
-                    Bites++;
-                    SwitchLog.Write($"WoW fishing: bite at {20 * MathF.Log10(Math.Max(peak, 1e-5f)):0} dB, background {_detector.BaselineDb:0} dB");
-                    Bite?.Invoke();
+                    if (!detector.Feed(peak, now)) continue;
+                    SwitchLog.Write($"WoW fishing: splash at {20 * MathF.Log10(Math.Max(peak, 1e-5f)):0} dB, background {detector.BaselineDb:0} dB");
+                    Bite?.Invoke(id);
                 }
                 stop.WaitHandle.WaitOne(25);
             }
@@ -146,8 +125,8 @@ public sealed class WowFishing : IDisposable
         {
             Release(sessions);
             Marshal.ReleaseComObject(devices);
-            State = WowListenState.Stopped;
-            _detector.Reset();
+            _level = 0;
+            SetState(WowListenState.Stopped);
         }
     }
 
@@ -219,12 +198,7 @@ public sealed class WowFishing : IDisposable
 
     public void Dispose()
     {
-        lock (_gate)
-        {
-            _cts?.Cancel();
-            _thread?.Join(500);
-            _thread = null;
-        }
+        lock (_gate) { if (_thread != null) StopLocked(); }
     }
 
     // ---------------- interop ----------------

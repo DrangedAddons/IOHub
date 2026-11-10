@@ -14,9 +14,8 @@ It keeps itself up to date from the releases here.
 
 - **Devices** shows everything it can switch.
 - **Profiles** is a table: profiles across the top, devices down the side. Tick what each profile uses. A section left blank isn't changed by that profile.
-- **Triggers** are what switch profiles: a hotkey, a double tap, triple tap or hold of one key, a profile picker (a gesture, then press 1–9), or Steam Big Picture opening.
+- **Triggers** are what switch profiles: a hotkey, a double tap, triple tap or hold of one key, a profile picker (a gesture, then press 1–9), Steam Big Picture opening, or your fishing bobber splashing in World of Warcraft (heard in WoW's own sound, e.g. to rumble the controller).
 - **Overview** shows which profile the PC is in now.
-- **Integrations** react to games. World of Warcraft: rumble the controller when the fishing bobber splashes (it listens to WoW's own sound).
 
 Closing the window keeps it running in the tray. Right-click the tray icon to switch profiles, pause triggers or quit.
 

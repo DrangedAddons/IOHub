@@ -23,6 +23,7 @@ public sealed class SplashDetector
     float _baseline = -70;
     long _lastBusy = long.MinValue / 2, _lastHit = long.MinValue / 2, _burstQuietFor;
     int _loudRun;
+    bool _started;
 
     /// <summary>The last level fed, 0..1 (for the page's meter).</summary>
     public float Level { get; private set; }
@@ -33,6 +34,14 @@ public sealed class SplashDetector
     {
         Level = peak;
         float db = peak > 0.000_01f ? 20 * MathF.Log10(peak) : -100;
+        // Starting up (or WoW just came back): take what's playing as the background, and count it as busy, so the
+        // sound already going on when listening starts is never a splash.
+        if (!_started)
+        {
+            _started = true;
+            _baseline = MathF.Max(db, -90);
+            _lastBusy = nowMs;
+        }
         float reference = MathF.Max(_baseline, FloorDb);
         bool loud = db > reference + ThresholdDb;
         bool busy = db > reference + ThresholdDb / 2;
@@ -64,6 +73,7 @@ public sealed class SplashDetector
     {
         _baseline = -70;
         _loudRun = 0;
+        _started = false;
         _lastBusy = _lastHit = long.MinValue / 2;
         Level = 0;
     }

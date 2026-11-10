@@ -15,6 +15,8 @@ public enum TriggerKind
     ControllerCombo = 4,
     /// <summary>Before 0.6: the controller version of ProfilePicker. Now a ControllerCombo with Then = Picker; only read from old files.</summary>
     ControllerPicker = 5,
+    /// <summary>The fishing bobber splashing in World of Warcraft, heard in WoW's sound. An integration.</summary>
+    WowFishingBite = 6,
     /// <summary>Just created; the type hasn't been picked yet. Never fires.</summary>
     Unset = 99,
 }
@@ -91,6 +93,9 @@ public sealed class Trigger
     /// <summary>Big Picture only: close and reopen it after switching, so it fills the new display.</summary>
     public bool ReopenBigPicture { get; set; }
 
+    /// <summary>WoW fishing bite only: "low", "normal" or "high" (WowFishing.Sensitivities).</summary>
+    public string Sensitivity { get; set; } = "normal";
+
     /// <summary>True for triggers with a start and an end (Big Picture); false for one-shot key presses.</summary>
     public bool HasEnd => Kind == TriggerKind.SteamBigPicture;
 
@@ -113,7 +118,7 @@ public sealed class Trigger
 
     public static TriggerCategory CategoryOf(TriggerKind kind) => kind switch
     {
-        TriggerKind.SteamBigPicture => TriggerCategory.Integrations,
+        TriggerKind.SteamBigPicture or TriggerKind.WowFishingBite => TriggerCategory.Integrations,
         TriggerKind.ControllerCombo or TriggerKind.ControllerPicker => TriggerCategory.Controller,
         _ => TriggerCategory.Keys,
     };

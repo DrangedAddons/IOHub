@@ -104,12 +104,13 @@ public partial class TriggersPage : UserControl
         TriggerKind.ProfilePicker => ("Profile picker", "", "A gesture, then 1–9 to pick the profile"),
         TriggerKind.ControllerCombo => ("Controller buttons", "\uE7FC", "Press, tap or hold a button, or several together like View + Menu"),
         TriggerKind.ControllerPicker => ("Controller picker", "\uE7FC", "Buttons together, then A, B, X, Y or the D-pad to pick the profile"),
+        TriggerKind.WowFishingBite => ("WoW fishing bite", "\uE767", "Your bobber splashes in World of Warcraft, heard in its sound"),
         TriggerKind.SteamBigPicture => ("Steam Big Picture", "", "Switch while Big Picture is open"),
         _ => ("New trigger", "", "Choose what sets it off"),
     };
 
     // Pickers aren't a kind any more: "Pick a profile" is a THEN choice on key gestures and controller buttons.
-    static readonly TriggerKind[] Kinds = [TriggerKind.Hotkey, TriggerKind.KeyGesture, TriggerKind.ControllerCombo, TriggerKind.SteamBigPicture];
+    static readonly TriggerKind[] Kinds = [TriggerKind.Hotkey, TriggerKind.KeyGesture, TriggerKind.ControllerCombo, TriggerKind.SteamBigPicture, TriggerKind.WowFishingBite];
 
     static string CategoryName(TriggerCategory c) => c switch
     {
@@ -343,6 +344,10 @@ public partial class TriggersPage : UserControl
             // Only key gestures and controller buttons can open the picker.
             if (t.IsPicker && kind is not (TriggerKind.KeyGesture or TriggerKind.ControllerCombo)) t.Then = ThenKind.Profile;
             if (t.Gesture == GestureKind.WhileHeld && kind is not (TriggerKind.KeyGesture or TriggerKind.ControllerCombo)) t.Gesture = GestureKind.DoubleTap;
+            // What a bite is for: buzz the controller. Still changeable, but it starts out ready.
+            if (kind == TriggerKind.WowFishingBite && !t.ChangesDevice && t.ProfileId == null
+                && _features.Find(FeatureService.ControllersId, "rumble") is { } rumble)
+                PickFeature(t, rumble, FeatureAction.Set, "medium");
             Save();
         };
         return button;
@@ -357,6 +362,7 @@ public partial class TriggersPage : UserControl
             _ when t.IsPicker => KeyNames.Describe(t),
             TriggerKind.SteamBigPicture when !t.ChangesDevice => target == null ? "Not linked to a profile"
                 : $"Switches to {target.Name} while it's open" + (t.SwitchBack ? ", then reverts" : ""),
+            TriggerKind.WowFishingBite when t.ChangesDevice => $"Fishing bite → {_features.Describe(t, withDevice: true)}",
             _ when t.ChangesDevice => t.Kind == TriggerKind.SteamBigPicture
                 ? $"While it's open → {_features.Describe(t, withDevice: true)}" + (t.SwitchBack ? ", undone when it closes" : "")
                 : $"{KeyNames.Describe(t)} → {_features.Describe(t, withDevice: true)}",
@@ -431,8 +437,58 @@ public partial class TriggersPage : UserControl
                 panel.Children.Add(line);
                 panel.Children.Add(Note("Works with any Steam install: it watches for the Big Picture window itself."));
                 break;
+
+            case TriggerKind.WowFishingBite:
+                WowEditor(t, panel);
+                break;
         }
         return panel;
+    }
+
+    /// <summary>WoW fishing bite: whether WoW is running, how sensitive, and WoW's live sound level to tune that by.</summary>
+    void WowEditor(Trigger t, StackPanel panel)
+    {
+        bool listening = _engine.Wow.State == Integrations.WowListenState.Listening;
+        var line = new StackPanel { Orientation = Orientation.Horizontal };
+        line.Children.Add(new TextBlock { Text = "Your bobber splashes", FontSize = 13.5, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
+        if (t.Enabled && !_engine.Paused) line.Children.Add(StateChip(listening ? "WoW running" : "WoW not running", listening));
+        panel.Children.Add(line);
+
+        var sensitivity = new StackPanel
+        {
+            Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0),
+            ToolTip = "Higher catches quieter splashes, but also more sounds that aren't the bite. Try Normal first.",
+        };
+        sensitivity.Children.Add(new TextBlock { Text = "Sensitivity", Foreground = Res<Brush>("MutedBrush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) });
+        foreach (var (value, label, _) in Integrations.WowFishing.Sensitivities)
+        {
+            var pill = new ToggleButton { Style = Res<Style>("PillToggle"), Content = label, IsChecked = t.Sensitivity == value, Background = Res<Brush>("AccentBrush"), Margin = new Thickness(0, 0, 6, 0) };
+            pill.Click += (_, _) => { t.Sensitivity = value; Save(); };
+            sensitivity.Children.Add(pill);
+        }
+        panel.Children.Add(sensitivity);
+
+        // WoW's level, live while it's showing: watch it jump on the splash to judge the sensitivity.
+        if (listening)
+        {
+            var level = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
+            level.Children.Add(new TextBlock { Text = "WoW sound", Foreground = Res<Brush>("MutedBrush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) });
+            var meter = new ProgressBar { Style = Res<Style>("Meter"), Width = 180, VerticalAlignment = VerticalAlignment.Center };
+            level.Children.Add(meter);
+            var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+            timer.Tick += (_, _) =>
+            {
+                float peak = _engine.Wow.Level;
+                double db = peak > 1e-5f ? 20 * Math.Log10(peak) : -100;
+                meter.Value = Math.Clamp((db + 60) / 60, 0, 1); // a 60 dB scale, so quiet ambience still moves it
+            };
+            meter.Loaded += (_, _) => timer.Start();
+            meter.Unloaded += (_, _) => timer.Stop();
+            panel.Children.Add(level);
+        }
+
+        panel.Children.Add(Note("Listens to WoW's own sound, so other apps don't count. It only takes a splash after a couple of quiet seconds, "
+            + "so casting, looting, fights and towns don't set it off. Works best with Music off and Ambience down in WoW's Sound settings."));
     }
 
     UIElement GestureChoice(Trigger t, bool controller = false)
@@ -889,7 +945,8 @@ public partial class TriggersPage : UserControl
 
     FrameworkElement? Options(Trigger t, bool compact)
     {
-        if (t.IsPicker || t.Kind == TriggerKind.Unset) return null;
+        // A bite has no end to undo anything at.
+        if (t.IsPicker || t.Kind is TriggerKind.Unset or TriggerKind.WowFishingBite) return null;
         var panel = new StackPanel { Margin = new Thickness(0, compact ? 8 : 0, 0, 0) };
         if (t.ChangesDevice)
         {
@@ -956,9 +1013,14 @@ public partial class TriggersPage : UserControl
         else if (_engine.LastFired(t) is { } at) text = $"Last fired at {at:T}";
         else if (t.UsesController && _engine.ControllersConnected == 0) text = "Ready, once a controller connects";
         else if (t.IsPicker && _profiles.Profiles.Count == 0) text = "Make a profile to turn this on";
-        else text = t.Kind == TriggerKind.SteamBigPicture ? "Watching for Big Picture" : "Ready";
+        else text = t.Kind switch
+        {
+            TriggerKind.SteamBigPicture => "Watching for Big Picture",
+            TriggerKind.WowFishingBite => _engine.Wow.State == Integrations.WowListenState.Listening ? "Listening for the splash" : "Waiting for WoW",
+            _ => "Ready",
+        };
 
-        bool live = t.Enabled && !_engine.Paused && (text is "Ready" or "Watching for Big Picture" || text.StartsWith("Last"));
+        bool live = t.Enabled && !_engine.Paused && (text is "Ready" or "Watching for Big Picture" or "Listening for the splash" || text.StartsWith("Last"));
         if (text.StartsWith("Ready, once")) live = false;
         var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         row.Children.Add(new Ellipse

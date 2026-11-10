@@ -32,7 +32,6 @@ public partial class DevicesPage
         _profiles = profiles;
         // Mouse mode turned on or off (from a trigger, say), or pausing for a fullscreen app; triggers added or changed.
         features.Mouse.Changed += () => Dispatcher.BeginInvoke(Render);
-        features.Fishing.Changed += () => Dispatcher.BeginInvoke(Render);
         profiles.Changed += Render;
     }
 

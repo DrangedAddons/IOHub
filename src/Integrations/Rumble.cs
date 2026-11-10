@@ -7,6 +7,13 @@ public static class Rumble
 {
     static int _busy;
 
+    /// <summary>The controller's Rumble function: how hard it buzzes.</summary>
+    public static readonly (string Value, string Label, double Strength)[] Strengths =
+        [("light", "Light", 0.35), ("medium", "Medium", 0.65), ("strong", "Strong", 1.0)];
+
+    public static void Pulse(string? strength) =>
+        Pulse(Strengths.FirstOrDefault(s => s.Value == strength).Strength is > 0 and var v ? v : 0.65);
+
     /// <summary>
     /// Two short buzzes on every connected controller, at <paramref name="strength"/> (0..1). Returns at once; a
     /// pattern already playing isn't stacked on.
