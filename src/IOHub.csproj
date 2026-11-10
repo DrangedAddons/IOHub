@@ -27,6 +27,9 @@
     <!-- Sidebar and dialog logo, tray icon; regenerate both with tools/make_icon.py -->
     <Resource Include="logo.png" />
     <Resource Include="app.ico" />
+    <!-- The FishIO addon IO Hub installs into WoW (Integrations/FishIOAddon.cs); its source is addons/FishIO -->
+    <EmbeddedResource Include="..\addons\FishIO\FishIO.toc" LogicalName="FishIO/FishIO.toc" />
+    <EmbeddedResource Include="..\addons\FishIO\Core.lua" LogicalName="FishIO/Core.lua" />
     <Using Remove="System.Windows.Forms" />
     <Using Remove="System.Drawing" />
   </ItemGroup>

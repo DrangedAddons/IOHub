@@ -479,17 +479,64 @@ public partial class TriggersPage : UserControl
               + "so it goes by level: it only takes a loud sound after a couple of quiet seconds."));
 
         // The companion addon: quiets everything but effects while a pole is in hand, so the splash stands out.
-        var fishio = Integrations.FishIOAddon.Find();
-        var addon = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
-        addon.Children.Add(new TextBlock { Text = "FishIO addon", FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
-        addon.Children.Add(StateChip(fishio.Count > 0 ? "Installed" : "Not installed", fishio.Count > 0));
-        panel.Children.Add(addon);
-        panel.Children.Add(Note(fishio.Count > 0
-            ? $"{Integrations.FishIOAddon.Describe(fishio)}. While a fishing pole is in your main hand it turns music, ambience and chatter off, so the splash stands out."
-            : "Install FishIO in WoW: while a fishing pole is in your main hand it turns music, ambience and chatter off, so the splash isn't drowned out. "
-              + "Without it, turn Music off and Ambience down in WoW's Sound settings."));
+        panel.Children.Add(FishIOControls(Rebuild));
 
         panel.Children.Add(WowRecording());
+    }
+
+    /// <summary>
+    /// FishIO, which IO Hub carries and installs: whether it's in each WoW version it fits, with Install, Update and
+    /// Remove. A development copy (a git working copy) is shown but never changed. Also on the Devices page, under the
+    /// controller's functions.
+    /// </summary>
+    public static UIElement FishIOControls(Action changed)
+    {
+        Style S(string key) => (Style)Application.Current.FindResource(key);
+        var box = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
+        var installs = Integrations.FishIOAddon.Find();
+        var missing = Integrations.FishIOAddon.Missing();
+
+        var head = new StackPanel { Orientation = Orientation.Horizontal };
+        head.Children.Add(new TextBlock { Text = "FishIO addon", FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
+        head.Children.Add(new Border
+        {
+            Style = S(installs.Count > 0 ? "BadgeInfo" : "Badge"), Margin = new Thickness(10, 0, 0, 0),
+            Child = new TextBlock { Text = installs.Count > 0 ? "Installed" : "Not installed" },
+        });
+        box.Children.Add(head);
+
+        var buttons = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
+        Button Act(string text, Func<string?> run, string? tip = null)
+        {
+            var b = new Button { Style = S("GhostButton"), Padding = new Thickness(12, 4, 12, 5), Margin = new Thickness(0, 0, 8, 6), Content = text, ToolTip = tip };
+            b.Click += (_, _) =>
+            {
+                if (run() is { } error) Ui.DarkDialog.Show(Window.GetWindow(b), "FishIO", error);
+                changed();
+            };
+            return b;
+        }
+        foreach (var (flavor, folder) in missing)
+            buttons.Children.Add(Act($"Install in {Integrations.FishIOAddon.GameName(flavor)}", () => Integrations.FishIOAddon.Install(folder),
+                $"Puts FishIO {Integrations.FishIOAddon.Bundled} in {folder}\\Interface\\AddOns. /reload or log in to load it."));
+        foreach (var i in installs.Where(i => !i.DevCopy))
+        {
+            if (i.Outdated)
+                buttons.Children.Add(Act($"Update in {i.Game}", () => Integrations.FishIOAddon.Install(i.FlavorFolder)));
+            buttons.Children.Add(Act(installs.Count > 1 ? $"Remove from {i.Game}" : "Remove", () => Integrations.FishIOAddon.Remove(i),
+                "Deletes the FishIO folder. Your sound settings are put back when you log out with it, so remove it between sessions."));
+        }
+        if (buttons.Children.Count > 0) box.Children.Add(buttons);
+
+        string what = "While a fishing pole is in your main hand it turns music, ambience and chatter off, so the splash stands out.";
+        string text = installs.Count > 0
+            ? $"{Integrations.FishIOAddon.Describe(installs)}. {what}"
+            : missing.Count > 0
+                ? $"IO Hub carries FishIO {Integrations.FishIOAddon.Bundled} and keeps it up to date. {what}"
+                : $"IO Hub carries FishIO for WoW Forever, but couldn't find it installed. {what} Without it, turn Music off and Ambience down in WoW's Sound settings.";
+        if (installs.Any(i => i.DevCopy)) text += " A development copy (it has .git) is never changed by IO Hub.";
+        box.Children.Add(new TextBlock { Text = text, Style = S("Muted"), TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.None, Margin = new Thickness(0, 4, 0, 0) });
+        return box;
     }
 
     /// <summary>

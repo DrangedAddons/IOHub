@@ -204,23 +204,7 @@ public partial class DevicesPage
     UIElement? FishIONote()
     {
         if (_profiles?.Data.Triggers.Any(t => t.Kind == TriggerKind.WowFishingBite) != true) return null;
-        var installs = Integrations.FishIOAddon.Find();
-        bool ok = installs.Count > 0;
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
-        row.Children.Add(new TextBlock
-        {
-            Text = ok ? "" : "", FontFamily = Res<FontFamily>("IconFont"), FontSize = 12, VerticalAlignment = VerticalAlignment.Center,
-            Foreground = Res<Brush>(ok ? "SuccessBrush" : "WarnBrush"), Margin = new Thickness(0, 0, 8, 0),
-        });
-        row.Children.Add(new TextBlock
-        {
-            VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap,
-            Text = ok
-                ? $"FishIO addon installed ({Integrations.FishIOAddon.Describe(installs)}): WoW goes quiet but for effects while a fishing pole is in hand, so the WoW fishing bite trigger hears the splash."
-                : "FishIO addon not installed. The WoW fishing bite trigger hears the splash better with it: it turns WoW's music, ambience and chatter off while a fishing pole is in hand.",
-            Foreground = Res<Brush>(ok ? "MutedBrush" : "WarnBrush"), FontSize = 12,
-        });
-        return row;
+        return TriggersPage.FishIOControls(Render);
     }
 
     // ---------------- mouse mode settings (in the controller's functions) ----------------

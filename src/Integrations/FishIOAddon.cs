@@ -1,12 +1,19 @@
 using System.Diagnostics;
 using System.IO;
+using IOHub.Profiles;
 using Microsoft.Win32;
 
 namespace IOHub.Integrations;
 
-/// <summary>FishIO found in one WoW version's AddOns folder.</summary>
-public sealed record FishIOInstall(string Flavor, string Version, string Folder)
+/// <summary>FishIO found in one WoW version's AddOns folder. DevCopy: a git working copy, which IO Hub never touches.</summary>
+public sealed record FishIOInstall(string Flavor, string Version, string Folder, bool DevCopy = false)
 {
+    /// <summary>Older than the copy inside IO Hub, so updating it would bring it up to date.</summary>
+    public bool Outdated => !DevCopy && FishIOAddon.IsOlder(Version, FishIOAddon.Bundled);
+
+    /// <summary>The WoW version folder it's in: ...\World of Warcraft\_forever_.</summary>
+    public string FlavorFolder => Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(Folder)!)!)!;
+
     /// <summary>"WoW Forever", "Retail", "Classic Era"…</summary>
     public string Game => Flavor switch
     {
@@ -21,14 +28,25 @@ public sealed record FishIOInstall(string Flavor, string Version, string Folder)
 }
 
 /// <summary>
-/// Finds the FishIO companion addon (focus mode: music and ambience off while a fishing pole is in hand) in every WoW
-/// version installed. WoW's folder comes from a running Wow.exe, Blizzard's registry entry, or the default install
-/// path. IO Hub can't tell whether the addon is turned on in game, only that it's there.
+/// The FishIO companion addon (focus mode: music and ambience off while a fishing pole is in hand). IO Hub carries it
+/// (its source is addons/FishIO in this repo, embedded in the exe) and installs, updates and removes it, so it only
+/// has one owner: it isn't in the DrangedAddons manager. Installed copies are updated when IO Hub starts with a newer
+/// one. A folder with .git in it is a development copy and is never written to or deleted.
+///
+/// WoW's folder comes from a running Wow.exe, Blizzard's registry entry, or the default install path. IO Hub can't
+/// tell whether the addon is turned on in game, only that it's there.
 /// </summary>
 public static class FishIOAddon
 {
     public const string Name = "FishIO";
-    public const string Url = "https://github.com/DrangedAddons/FishIO";
+
+    /// <summary>The WoW versions FishIO is made for (its .toc is for WoW Forever's client).</summary>
+    public static readonly string[] Flavors = ["_forever_"];
+
+    static readonly string[] Files = ["FishIO.toc", "Core.lua"];
+
+    /// <summary>The version inside IO Hub, from its embedded .toc.</summary>
+    public static string Bundled { get; } = BundledVersion();
 
     static DateTime _checkedAt;
     static List<FishIOInstall> _found = [];
@@ -49,7 +67,8 @@ public static class FishIOAddon
                 var folder = Path.Combine(flavorDir, "Interface", "AddOns", Name);
                 var toc = Path.Combine(folder, Name + ".toc");
                 if (!File.Exists(toc)) continue;
-                found.Add(new FishIOInstall(Path.GetFileName(flavorDir), TocVersion(toc), folder));
+                found.Add(new FishIOInstall(Path.GetFileName(flavorDir), TocVersion(toc), folder,
+                    Directory.Exists(Path.Combine(folder, ".git")) || File.Exists(Path.Combine(folder, ".git"))));
             }
         }
         return _found = found;
@@ -62,6 +81,82 @@ public static class FishIOAddon
         1 => $"{installs[0].Version} in {installs[0].Game}",
         _ => string.Join(" and ", installs.Select(i => $"{i.Version} in {i.Game}")),
     };
+
+    /// <summary>
+    /// WoW versions FishIO fits that are installed but don't have it, as their folders (...\World of Warcraft\_forever_).
+    /// </summary>
+    public static IReadOnlyList<(string Flavor, string Folder)> Missing()
+    {
+        var have = Find().Select(i => i.Flavor).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return WowRoots().SelectMany(root => Flavors.Select(f => (Flavor: f, Folder: Path.Combine(root, f))))
+            .Where(x => Directory.Exists(x.Folder) && !have.Contains(x.Flavor))
+            .DistinctBy(x => x.Flavor).ToList();
+    }
+
+    /// <summary>The name WoW versions go by: "WoW Forever".</summary>
+    public static string GameName(string flavor) => new FishIOInstall(flavor, "", "").Game;
+
+    /// <summary>Writes IO Hub's copy into a WoW version folder (..\_forever_). Returns an error, or null.</summary>
+    public static string? Install(string flavorFolder)
+    {
+        var folder = Path.Combine(flavorFolder, "Interface", "AddOns", Name);
+        if (Directory.Exists(Path.Combine(folder, ".git"))) return "That's a development copy (it has .git), so IO Hub leaves it alone.";
+        try
+        {
+            Directory.CreateDirectory(folder);
+            foreach (var file in Files)
+            {
+                // Through a temp file, so WoW never reads half a file.
+                var target = Path.Combine(folder, file);
+                var temp = target + ".iohub";
+                using (var res = typeof(FishIOAddon).Assembly.GetManifestResourceStream($"{Name}/{file}")!)
+                using (var output = File.Create(temp))
+                    res.CopyTo(output);
+                File.Move(temp, target, overwrite: true);
+            }
+            SwitchLog.Write($"FishIO {Bundled} installed in {folder}");
+            return null;
+        }
+        catch (Exception ex) { return ex.Message; }
+        finally { _checkedAt = default; }
+    }
+
+    /// <summary>Deletes an install's folder. Never a development copy. Returns an error, or null.</summary>
+    public static string? Remove(FishIOInstall install)
+    {
+        if (install.DevCopy) return "That's a development copy (it has .git), so IO Hub leaves it alone.";
+        try
+        {
+            Directory.Delete(install.Folder, recursive: true);
+            SwitchLog.Write($"FishIO removed from {install.Folder}");
+            return null;
+        }
+        catch (Exception ex) { return ex.Message; }
+        finally { _checkedAt = default; }
+    }
+
+    /// <summary>Updates every install older than IO Hub's copy. At startup, off the UI thread.</summary>
+    public static void UpdateOutdated()
+    {
+        foreach (var install in Find().Where(i => i.Outdated))
+        {
+            var error = Install(install.FlavorFolder);
+            SwitchLog.Write(error == null ? $"FishIO updated from {install.Version} to {Bundled} in {install.Game}" : $"FishIO couldn't be updated in {install.Game}: {error}");
+        }
+    }
+
+    public static bool IsOlder(string version, string than) =>
+        Version.TryParse(version, out var a) && Version.TryParse(than, out var b) ? a < b : version != than && version == "?";
+
+    static string BundledVersion()
+    {
+        using var res = typeof(FishIOAddon).Assembly.GetManifestResourceStream($"{Name}/{Name}.toc");
+        if (res == null) return "?";
+        using var reader = new StreamReader(res);
+        while (reader.ReadLine() is { } line)
+            if (line.StartsWith("## Version:", StringComparison.OrdinalIgnoreCase)) return line[11..].Trim();
+        return "?";
+    }
 
     static string TocVersion(string toc)
     {
