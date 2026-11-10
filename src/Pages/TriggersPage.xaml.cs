@@ -549,8 +549,10 @@ public partial class TriggersPage : UserControl
             status.Loaded += (_, _) => timer.Start();
             status.Unloaded += (_, _) => timer.Stop();
         }
-        box.Children.Add(Note("Helps tune the bite detection. Fish 10 to 15 casts with a pole in hand, looting each catch, then stop. "
-            + "It saves WoW's sound only (about 11 MB a minute) and a list of when it thought it heard a bite. Needs Windows 11."));
+        box.Children.Add(Note("Helps tune the bite detection. Fish 10 to 15 casts with a pole in hand, then stop. Click the bobber just after "
+            + "each splash: your clicks, keys and controller presses are bookmarked, so they show where the real bites were. "
+            + "It saves WoW's sound only (about 11 MB a minute) and a list of those bookmarks and of when it thought it heard a bite. "
+            + "Typing keys are listed only as \"a typing key\", never which one. Needs Windows 11."));
         return box;
     }
 

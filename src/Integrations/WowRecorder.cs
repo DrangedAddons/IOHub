@@ -7,7 +7,8 @@ namespace IOHub.Integrations;
 
 /// <summary>
 /// Records World of Warcraft's own sound (nothing from other apps) to a WAV file, for tuning the fishing bite
-/// detector: every time it fires, a line goes into a markers file beside the WAV with the time into the recording.
+/// detector: every time it fires, and every click, key or controller press (to bookmark real bites), a line goes into
+/// a markers file beside the WAV with the time into the recording.
 /// Uses Windows' per-app loopback capture (Windows 11, or Windows 10 build 20348 and later).
 ///
 /// 48 kHz stereo 16-bit: about 11 MB a minute. Stops by itself after <see cref="MaxLength"/>. Its own thread, which
@@ -124,9 +125,12 @@ public sealed class WowRecorder : IDisposable
 
             var buffer = new byte[Rate * BytesPerFrame / 10];
             long nextQpc = 0;
+            var presses = new PressWatcher(Mark);
             while (!_stop && Elapsed < MaxLength)
             {
-                ready.WaitOne(100);
+                // Every 10 ms at most, so a click's bookmark is within 10 ms of the click.
+                ready.WaitOne(10);
+                presses.Poll();
                 while (capture.GetNextPacketSize(out uint size) == 0 && size > 0)
                 {
                     if (capture.GetBuffer(out var data, out uint frames, out uint flags, out _, out ulong qpc) != 0) break;
@@ -199,6 +203,54 @@ public sealed class WowRecorder : IDisposable
         w.Write("fmt "u8); w.Write(16); w.Write((short)1); w.Write((short)Channels); w.Write(Rate);
         w.Write(Rate * BytesPerFrame); w.Write((short)BytesPerFrame); w.Write((short)16);
         w.Write("data"u8); w.Write((uint)Math.Min(dataBytes, uint.MaxValue));
+    }
+
+    /// <summary>
+    /// Bookmarks every press while recording: mouse buttons, keys and Xbox controller buttons. Clicking the bobber just
+    /// after the splash marks where a real bite was. Typing keys (letters, numbers, space…) are written as "a typing
+    /// key" so chat never ends up in the file; only the moment matters.
+    /// </summary>
+    sealed class PressWatcher(Action<string> mark)
+    {
+        readonly bool[] _keys = new bool[256];
+        readonly int[] _pads = new int[Triggers.XInputPad.Slots];
+        long _nextPadRead;
+
+        public void Poll()
+        {
+            for (int vk = 1; vk < 256; vk++)
+            {
+                // Generic Shift/Ctrl/Alt also show as their left/right keys; skip the generic ones.
+                if (vk is 0x10 or 0x11 or 0x12) continue;
+                bool down = (GetAsyncKeyState(vk) & 0x8000) != 0;
+                if (down && !_keys[vk]) mark($"pressed: {Describe(vk)}");
+                _keys[vk] = down;
+            }
+            // Empty controller slots are slow to ask about, so the pads are read every 20 ms.
+            long now = Environment.TickCount64;
+            if (now < _nextPadRead) return;
+            _nextPadRead = now + 20;
+            for (int slot = 0; slot < _pads.Length; slot++)
+            {
+                if (!Triggers.XInputPad.TryRead(slot, out int buttons)) { _pads[slot] = 0; continue; }
+                int pressed = buttons & ~_pads[slot];
+                if (pressed != 0) mark($"pressed: controller {Triggers.ControllerButtons.Combo(pressed)}");
+                _pads[slot] = buttons;
+            }
+        }
+
+        static string Describe(int vk) => vk switch
+        {
+            0x01 => "left mouse",
+            0x02 => "right mouse",
+            0x04 => "middle mouse",
+            0x05 => "mouse button 4",
+            0x06 => "mouse button 5",
+            _ when Triggers.KeyNames.IsTypingKey(vk) => "a typing key",
+            _ => $"key {Triggers.KeyNames.Of(vk)}",
+        };
+
+        [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vk);
     }
 
     static void Check(int hr, string what)

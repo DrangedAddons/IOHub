@@ -5,6 +5,8 @@
   with a text file beside it listing every time the trigger thought it heard a bite. It's for tuning the detection
   against the real splash. *Open folder* shows the recordings. Stops by itself after 15 minutes (about 11 MB a minute).
   Needs Windows 11.
+  - Your clicks, keys and controller presses are bookmarked in that list too, so clicking the bobber just after the
+    splash marks where the real bites were. Typing keys are listed only as *a typing key*, never which one.
 - **Rumble feels the same every time.** Each buzz starts with a short strong kick, then holds the chosen strength.
   Light used to sometimes barely spin the motors.
 - **Fewer missed bites.** After a hit the trigger ignores sounds for 2.5 s instead of 4 s. When a cast was mistaken
