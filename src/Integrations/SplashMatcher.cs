@@ -5,8 +5,13 @@ namespace IOHub.Integrations;
 /// <param name="ShapeDb">How far its tone was from a splash's, in dB per band (0 = the same).</param>
 /// <param name="RiseDb">How much louder it was than the 200 ms before.</param>
 /// <param name="LevelDb">The loudest of those 400 ms, dBFS.</param>
-public readonly record struct SplashScore(float Corr, float ShapeDb, float RiseDb, float LevelDb)
+/// <param name="Rank">How close to the bite as one number: match minus tone off / 10.</param>
+/// <param name="DecoyRank">The same against someone jumping or landing in water.</param>
+public readonly record struct SplashScore(float Corr, float ShapeDb, float RiseDb, float LevelDb, float Rank, float DecoyRank)
 {
+    /// <summary>How much closer it is to the bite than to a jump. Below 0 it sounds more like a jump.</summary>
+    public float OverDecoy => Rank - DecoyRank;
+
     public override string ToString() => $"match {Corr:0.00}, tone off by {ShapeDb:0.0} dB, {RiseDb:0} dB over before, peak {LevelDb:0} dBFS";
 }
 
@@ -19,6 +24,10 @@ public readonly record struct SplashScore(float Corr, float ShapeDb, float RiseD
 /// (0-500 Hz, 0.5-1.5 k, 1.5-4 k, 4-8 k, 8-11 k), from a 512-point FFT. After every frame the last 40 frames are
 /// compared with the first 40 of each splash: the loudness curve by correlation (so how loud doesn't matter), the band
 /// split by the average difference in dB. <see cref="SplashTemplates"/> holds those numbers for the three splashes.
+///
+/// It does the same against ten decoys, WoW's splashes for someone jumping or landing in water, which start much like
+/// the bite. <see cref="WowFishing"/> listens 300 ms past a match and only rumbles if the sound came closer to the bite
+/// than to any of those. Footsteps in water never come close to the bite to begin with.
 ///
 /// Pure logic, fed 48 kHz stereo 16-bit audio, so it can be tested on recordings.
 /// </summary>
@@ -34,6 +43,7 @@ public sealed class SplashMatcher
     static readonly (float[] Cos, float[] Sin) Twiddles = MakeTwiddles();
     static readonly int[] BitReverse = MakeBitReverse();
     static readonly (float Mean, float Norm)[] TemplateStats = SplashTemplates.Level.Select(Stats).ToArray();
+    static readonly (float Mean, float Norm)[] DecoyStats = SplashTemplates.DecoyLevel.Select(Stats).ToArray();
 
     readonly float[] _frame = new float[Hop];
     int _filled;
@@ -119,18 +129,25 @@ public sealed class SplashMatcher
         var (mean, norm) = Stats(_window);
         float rise = mean - before;
 
-        SplashScore best = default;
-        float bestRank = float.NegativeInfinity;
-        for (int t = 0; t < SplashTemplates.Level.Length; t++)
+        var (corr, shape, rank) = Best(SplashTemplates.Level, SplashTemplates.Shape, SplashTemplates.Loud, TemplateStats, first, mean, norm);
+        var (_, _, decoy) = Best(SplashTemplates.DecoyLevel, SplashTemplates.DecoyShape, SplashTemplates.DecoyLoud, DecoyStats, first, mean, norm);
+        return new SplashScore(corr, shape, rise, peak, rank, decoy);
+    }
+
+    /// <summary>The closest of a set of templates to the window: loudness correlation, tone difference, and the two as one rank.</summary>
+    (float Corr, float ShapeDb, float Rank) Best(float[][] levels, float[][] shapes, bool[][] louds, (float Mean, float Norm)[] stats, int first, float mean, float norm)
+    {
+        (float, float, float) best = (0, 99, float.NegativeInfinity);
+        for (int t = 0; t < levels.Length; t++)
         {
-            var tl = SplashTemplates.Level[t];
-            var (tm, tn) = TemplateStats[t];
+            var tl = levels[t];
+            var (tm, tn) = stats[t];
             float cov = 0;
             for (int i = 0; i < N; i++) cov += (_window[i] - mean) * (tl[i] - tm);
             float corr = norm > 0 && tn > 0 ? cov / (norm * tn) : 0;
 
-            var ts = SplashTemplates.Shape[t];
-            var loud = SplashTemplates.Loud[t];
+            var ts = shapes[t];
+            var loud = louds[t];
             float sum = 0;
             int count = 0;
             for (int i = 0; i < N; i++)
@@ -146,7 +163,7 @@ public sealed class SplashMatcher
             }
             float shape = count > 0 ? MathF.Sqrt(sum / count) : 99;
             float rank = corr - shape / 10;
-            if (rank > bestRank) { bestRank = rank; best = new SplashScore(corr, shape, rise, peak); }
+            if (rank > best.Item3) best = (corr, shape, rank);
         }
         return best;
     }

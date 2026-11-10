@@ -189,17 +189,29 @@ public sealed class WowFishing : IDisposable
         long burstStart = 0, burstLastLoud = 0;
         bool burstHit = false;
 
+        // A sound that matched, being listened to a little longer before it rumbles (see JumpCheckFrames).
+        Candidate? pending = null;
+
         void OnFrame(SplashScore? scored)
         {
             long now = Environment.TickCount64;
             TrackBurst(scored, now);
+            if (pending != null)
+            {
+                if (scored is { } more)
+                {
+                    pending.BestRank = Math.Max(pending.BestRank, more.Rank);
+                    pending.BestJump = Math.Max(pending.BestJump, more.DecoyRank);
+                }
+                if (--pending.FramesLeft <= 0) Decide(now);
+            }
             if (scored is not { } score) return;
             bool any = false;
             foreach (var rule in _rules)
             {
                 if (score.Corr < rule.MinCorr || score.ShapeDb > rule.MaxShapeDb || score.RiseDb < rule.MinRiseDb) continue;
                 any = true;
-                if (now - rule.LastHit < MatchCooldownMs) continue;
+                if (now - rule.LastHit < MatchCooldownMs || pending?.Rules.Contains(rule) == true) continue;
                 // Someone else's bobber, further away: it doesn't rumble, and doesn't hold off the next splash either.
                 if (OtherAngler(score.LevelDb) is { } yours)
                 {
@@ -210,13 +222,8 @@ public sealed class WowFishing : IDisposable
                     Recorder.Mark($"ignored, someone else's: {score}");
                     continue;
                 }
-                rule.LastHit = now;
-                burstHit = true;
-                SwitchLog.Write($"WoW fishing: splash heard ({score})");
-                Recorder.Mark($"detected: {score}");
-                var id = rule.Id;
-                ui.BeginInvoke(() => Bite?.Invoke(id));
-                AddYourPeak(score.LevelDb);
+                pending ??= new Candidate(score);
+                pending.Rules.Add(rule);
             }
             // Close calls go in a recording too, at most one a second, to see where the line should be.
             if (!any && score.Corr >= 0.6f && score.ShapeDb <= 9 && score.RiseDb >= 2 && now - lastNear >= 1000)
@@ -224,6 +231,32 @@ public sealed class WowFishing : IDisposable
                 lastNear = now;
                 Recorder.Mark($"near: {score}");
             }
+        }
+
+        // The bite or someone jumping or landing in the water? Over the 300 ms since it matched, which it came closest
+        // to. A jump splash starts much like the bite, but by then it's clearly one or the other.
+        void Decide(long now)
+        {
+            var c = pending!;
+            pending = null;
+            burstHit = true;
+            float margin = c.BestRank - c.BestJump;
+            string heard = $"{c.First}, {margin:+0.00;-0.00} closer to the bite than to a jump";
+            if (margin <= 0)
+            {
+                SwitchLog.Write($"WoW fishing: ignored, sounds like someone jumping or landing in the water ({heard})");
+                Recorder.Mark($"ignored, a jump: {heard}");
+                return;
+            }
+            SwitchLog.Write($"WoW fishing: splash heard ({heard})");
+            Recorder.Mark($"detected: {heard}");
+            foreach (var rule in c.Rules)
+            {
+                rule.LastHit = now;
+                var id = rule.Id;
+                ui.BeginInvoke(() => Bite?.Invoke(id));
+            }
+            AddYourPeak(c.First.LevelDb);
         }
 
         // Every loud sound that comes after quiet and doesn't rumble gets one switch.log line with its closest match,
@@ -332,6 +365,21 @@ public sealed class WowFishing : IDisposable
         _ears = null;
         ears.Stopping = true;
         ears.Thread?.Join(500);
+    }
+
+    /// <summary>
+    /// How long a match is listened to before it rumbles: 300 ms, so 30 frames. On WoW's own files, by then every bite
+    /// was 0.73 or more closer to the bite than to a jump, and every jump 0.67 or more closer to a jump; at 200 ms a
+    /// bite with someone walking through it was only 0.09 clear.
+    /// </summary>
+    const int JumpCheckFrames = 30;
+
+    sealed class Candidate(SplashScore first)
+    {
+        public readonly SplashScore First = first;
+        public readonly List<Rule> Rules = [];
+        public float BestRank = first.Rank, BestJump = first.DecoyRank;
+        public int FramesLeft = JumpCheckFrames;
     }
 
     sealed class Ears(uint pid)

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.0-beta.10
+- **Splashing around you doesn't rumble.** Someone jumping or landing in the water makes a splash that starts much
+  like the bite, and on High it sometimes rumbled. The trigger now also compares the sound with WoW's ten
+  jump/land-in-water splashes, listens 0.3 s longer, and only rumbles if it's closer to the bite. switch.log says when
+  it ignores one (*ignored, sounds like someone jumping or landing in the water*).
+  - Walking or running through water (player or creature footsteps) never came close to the bite in testing, on any
+    sensitivity.
+  - Tested on WoW's own sound files: every bite still rumbled, also with someone walking through it, and none of the
+    jumps, landings or footsteps did.
+  - The rumble now comes about 0.6 s into the splash instead of 0.3 s.
+
 ## 0.9.0-beta.9
 - **Other anglers' splashes stay ignored after an update or restart.** Beta.8 forgot how loud your splashes are
   whenever IO Hub restarted, then learned again from the next few rumbles, half of them someone else's. Their
