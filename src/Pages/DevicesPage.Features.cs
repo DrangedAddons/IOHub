@@ -113,8 +113,37 @@ public partial class DevicesPage
             AudioEndpoint => FeatureTable(features, functionWidth: 140, nowWidth: 150),
             _ => FeatureTable(features, functionWidth: 170, nowWidth: 190),
         });
+        if (key == FeatureService.ControllersId && FishIONote() is { } fishio) stack.Children.Add(fishio);
         if (key == FeatureService.ControllersId) stack.Children.Add(MouseSettings());
         return stack;
+    }
+
+    // ---------------- FishIO (in the controller's functions) ----------------
+
+    /// <summary>
+    /// With a WoW fishing bite trigger set up, whether its companion addon is installed: a line under the controller's
+    /// functions, since the rumble is what it's for. Null without such a trigger.
+    /// </summary>
+    UIElement? FishIONote()
+    {
+        if (_profiles?.Data.Triggers.Any(t => t.Kind == TriggerKind.WowFishingBite) != true) return null;
+        var installs = Integrations.FishIOAddon.Find();
+        bool ok = installs.Count > 0;
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
+        row.Children.Add(new TextBlock
+        {
+            Text = ok ? "" : "", FontFamily = Res<FontFamily>("IconFont"), FontSize = 12, VerticalAlignment = VerticalAlignment.Center,
+            Foreground = Res<Brush>(ok ? "SuccessBrush" : "WarnBrush"), Margin = new Thickness(0, 0, 8, 0),
+        });
+        row.Children.Add(new TextBlock
+        {
+            VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap,
+            Text = ok
+                ? $"FishIO addon installed ({Integrations.FishIOAddon.Describe(installs)}): WoW goes quiet but for effects while a fishing pole is in hand, so the WoW fishing bite trigger hears the splash."
+                : "FishIO addon not installed. The WoW fishing bite trigger hears the splash better with it: it turns WoW's music, ambience and chatter off while a fishing pole is in hand.",
+            Foreground = Res<Brush>(ok ? "MutedBrush" : "WarnBrush"), FontSize = 12,
+        });
+        return row;
     }
 
     // ---------------- mouse mode settings (in the controller's functions) ----------------

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.0-beta.4
+- **FishIO companion addon.** The WoW fishing bite trigger now says whether FishIO is installed, and in which WoW
+  version (*0.1.0 in WoW Forever*). FishIO turns WoW's music, ambience and chatter off while a fishing pole is in hand,
+  so the splash isn't drowned out. The controller's functions on the Devices page say the same while you have a WoW
+  fishing bite trigger.
+  - IO Hub finds WoW from the running game, Blizzard's install path in the registry, or the default folder, and looks
+    in every version's AddOns folder. It can't tell whether the addon is turned on in game.
+
 ## 0.9.0-beta.3
 - **WoW fishing bite hears WoW.** In beta.2 it always said *WoW not running*: the listener couldn't get Windows' sound
   device list, because the Devices page had already made it under its own name and .NET wouldn't hand it over. It

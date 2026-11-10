@@ -488,7 +488,18 @@ public partial class TriggersPage : UserControl
         }
 
         panel.Children.Add(Note("Listens to WoW's own sound, so other apps don't count. It only takes a splash after a couple of quiet seconds, "
-            + "so casting, looting, fights and towns don't set it off. Works best with Music off and Ambience down in WoW's Sound settings."));
+            + "so casting, looting, fights and towns don't set it off."));
+
+        // The companion addon: quiets everything but effects while a pole is in hand, so the splash stands out.
+        var fishio = Integrations.FishIOAddon.Find();
+        var addon = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
+        addon.Children.Add(new TextBlock { Text = "FishIO addon", FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
+        addon.Children.Add(StateChip(fishio.Count > 0 ? "Installed" : "Not installed", fishio.Count > 0));
+        panel.Children.Add(addon);
+        panel.Children.Add(Note(fishio.Count > 0
+            ? $"{Integrations.FishIOAddon.Describe(fishio)}. While a fishing pole is in your main hand it turns music, ambience and chatter off, so the splash stands out."
+            : "Install FishIO in WoW: while a fishing pole is in your main hand it turns music, ambience and chatter off, so the splash isn't drowned out. "
+              + "Without it, turn Music off and Ambience down in WoW's Sound settings."));
     }
 
     UIElement GestureChoice(Trigger t, bool controller = false)
