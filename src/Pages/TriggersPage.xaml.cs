@@ -303,7 +303,7 @@ public partial class TriggersPage : UserControl
         var panel = new StackPanel();
         foreach (var category in new[] { TriggerCategory.Keys, TriggerCategory.Controller, TriggerCategory.Integrations })
         {
-            panel.Children.Add(Label(category switch { TriggerCategory.Keys => "KEYS", TriggerCategory.Controller => "XBOX CONTROLLER", _ => "INTEGRATIONS" },
+            panel.Children.Add(Label(category switch { TriggerCategory.Keys => "KEYS", TriggerCategory.Controller => "CONTROLLER", _ => "INTEGRATIONS" },
                 top: category == TriggerCategory.Keys ? 0 : 14));
             var wrap = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
             foreach (var kind in Kinds.Where(k => Trigger.CategoryOf(k) == category)) wrap.Children.Add(TypeTile(t, kind));
@@ -428,7 +428,7 @@ public partial class TriggersPage : UserControl
                 panel.Children.Add(Note(ControllerButtons.Count(t.Buttons) == 1
                     ? SingleButtonWarning(t.Buttons)
                     : "Only counts when exactly these buttons are held, so it won't go off mid-game while you're holding something else."));
-                if (_engine.ControllersConnected == 0) panel.Children.Add(Note("No Xbox controller is connected right now."));
+                if (_engine.ControllersConnected == 0) panel.Children.Add(Note("No controller is connected right now."));
                 break;
 
             case TriggerKind.SteamBigPicture:
@@ -724,6 +724,8 @@ public partial class TriggersPage : UserControl
         _recording.Button.LostKeyboardFocus -= OnRecorderLostFocus;
         _recording.Timer?.Stop();
         _recording = null;
+        _padListening?.Dispose();
+        _padListening = null;
         _engine.Suspended = false;
         Rebuild();
     }
@@ -743,6 +745,8 @@ public partial class TriggersPage : UserControl
     /// Records a button combination: everything held at once, taken when they're all let go. The controllers are
     /// read here directly (the engine's reader is paused while recording, so the old combination doesn't fire).
     /// </summary>
+    IDisposable? _padListening; // PlayStation and Switch pads are read faster while recording
+
     void StartPadRecording(Trigger t, Button button)
     {
         StopRecording();
@@ -753,23 +757,25 @@ public partial class TriggersPage : UserControl
         button.Focus(); // so Esc reaches the page
         button.LostKeyboardFocus += OnRecorderLostFocus;
 
-        var slots = XInputPad.Connected();
+        _padListening?.Dispose();
+        _padListening = Pads.Listen();
+        var slots = Pads.Connected();
         int seen = 0;
         var clock = System.Diagnostics.Stopwatch.StartNew();
         var lastScan = 0L;
         void Prompt(string text) => button.Content = KeyPrompt(text);
-        Prompt(slots.Count == 0 ? "Connect an Xbox controller… (Esc cancels)" : "Press the button, or hold several together, then let go… (Esc cancels)");
+        Prompt(slots.Count == 0 ? "Connect a controller… (Esc cancels)" : "Press the button, or hold several together, then let go… (Esc cancels)");
         timer.Tick += (_, _) =>
         {
             if (clock.Elapsed > TimeSpan.FromSeconds(20)) { StopRecording(); return; }
             if (slots.Count == 0 && clock.ElapsedMilliseconds - lastScan > 1000)
             {
                 lastScan = clock.ElapsedMilliseconds;
-                slots = XInputPad.Connected();
+                slots = Pads.Connected();
                 if (slots.Count > 0) Prompt("Press the button, or hold several together, then let go… (Esc cancels)");
             }
             int held = 0;
-            foreach (var slot in slots) if (XInputPad.TryRead(slot, out var b)) held |= b;
+            foreach (var slot in slots) if (Pads.TryRead(slot, out var b)) held |= b;
             if (held != 0)
             {
                 if ((held | seen) != seen) button.Content = KeyChips(ControllerButtons.Combo(held | seen) + " + …");
@@ -1003,7 +1009,7 @@ public partial class TriggersPage : UserControl
     /// <summary>One button on its own: fine for some, risky for the ones games use.</summary>
     static string SingleButtonWarning(int button) => button switch
     {
-        ControllerButtons.Guide => "The Xbox button on its own also opens Game Bar, unless that's turned off (Windows Settings → Gaming → Game Bar).",
+        ControllerButtons.Guide => "On an Xbox controller this button on its own also opens Game Bar, unless that's turned off (Windows Settings → Gaming → Game Bar). Steam may also take the PS or Home button for itself.",
         ControllerButtons.View or ControllerButtons.LeftStick or ControllerButtons.RightStick
             => $"{ControllerButtons.Name(button)} on its own: games use it too, so Hold for a second or more is safest.",
         _ => $"{ControllerButtons.Name(button)} on its own also does whatever it does in your game. A combination, or holding it for a while, is safer.",

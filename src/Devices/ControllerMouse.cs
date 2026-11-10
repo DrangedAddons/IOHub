@@ -5,7 +5,7 @@ using IOHub.Triggers;
 namespace IOHub.Devices;
 
 /// <summary>
-/// Mouse mode: an Xbox controller drives the mouse. Left stick moves the pointer (holding LT slows it for precision),
+/// Mouse mode: a controller (Xbox, PlayStation or Switch) drives the mouse. Left stick moves the pointer (holding LT slows it for precision),
 /// right stick scrolls, A/B/X click left/right/middle, LB/RB are back/forward, the D-pad is the arrow keys, Menu is
 /// Enter, View is Esc and Y opens the on-screen keyboard.
 ///
@@ -60,7 +60,8 @@ public sealed class ControllerMouse : IDisposable
     {
         var clock = Stopwatch.StartNew();
         using var timer = new PreciseTimer();
-        var slots = XInputPad.Connected();
+        using var listening = Pads.Listen(fast: true);
+        var slots = Pads.Connected();
         long lastScan = 0, lastFullscreenCheck = -1000, lastActive = 0;
         double lastT = 0, carryX = 0, carryY = 0, carryWheel = 0, carryHWheel = 0;
         int previous = -1;     // buttons last read; -1 = not read yet
@@ -77,7 +78,7 @@ public sealed class ControllerMouse : IDisposable
                 lastT = t;
                 long ms = clock.ElapsedMilliseconds;
 
-                if (ms - lastScan > 2000) { slots = XInputPad.Connected(); lastScan = ms; }
+                if (ms - lastScan > 2000) { slots = Pads.Connected(); lastScan = ms; }
                 if (_settings.MousePauseInFullscreen && ms - lastFullscreenCheck >= 500)
                 {
                     lastFullscreenCheck = ms;
@@ -97,7 +98,7 @@ public sealed class ControllerMouse : IDisposable
                 XInputPad.Pad stick = default;
                 foreach (var slot in slots)
                 {
-                    if (!XInputPad.TryReadPad(slot, out var pad)) continue;
+                    if (!Pads.TryReadPad(slot, out var pad)) continue;
                     buttons |= pad.Buttons;
                     if (pad.LeftMagnitude + pad.RightMagnitude > stick.LeftMagnitude + stick.RightMagnitude) stick = pad;
                 }
@@ -263,21 +264,6 @@ public sealed class ControllerMouse : IDisposable
     /// Waits a few milliseconds accurately. Thread.Sleep rounds up to Windows' 15.6 ms tick, which makes the pointer
     /// judder; a high-resolution waitable timer doesn't, and unlike timeBeginPeriod it doesn't change the whole PC's timer.
     /// </summary>
-    sealed class PreciseTimer : IDisposable
-    {
-        readonly IntPtr _handle = CreateWaitableTimerExW(IntPtr.Zero, null, 0x2 /* HIGH_RESOLUTION */, 0x1F0003);
-
-        public void Wait(int ms)
-        {
-            if (_handle == IntPtr.Zero) { Thread.Sleep(ms); return; }
-            long due = -ms * 10_000L; // relative, in 100 ns units
-            if (!SetWaitableTimer(_handle, ref due, 0, IntPtr.Zero, IntPtr.Zero, false)) { Thread.Sleep(ms); return; }
-            WaitForSingleObject(_handle, 1000);
-        }
-
-        public void Dispose() { if (_handle != IntPtr.Zero) CloseHandle(_handle); }
-    }
-
     [StructLayout(LayoutKind.Sequential)] struct Point { public int X, Y; }
     [StructLayout(LayoutKind.Sequential)] struct Rect { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential)] struct MonitorInfo { public int Size; public Rect Monitor, Work; public uint Flags; }
@@ -299,8 +285,4 @@ public sealed class ControllerMouse : IDisposable
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr hwnd, System.Text.StringBuilder name, int max);
     [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
     [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern IntPtr CreateWaitableTimerExW(IntPtr attributes, string? name, uint flags, uint access);
-    [DllImport("kernel32.dll")] static extern bool SetWaitableTimer(IntPtr timer, ref long due, int period, IntPtr completion, IntPtr arg, bool resume);
-    [DllImport("kernel32.dll")] static extern uint WaitForSingleObject(IntPtr handle, uint ms);
-    [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
 }

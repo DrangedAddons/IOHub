@@ -77,7 +77,7 @@ public sealed class DeviceFeature
 /// </summary>
 public sealed class FeatureService(DeviceHub hub, ProfileService profiles, ProfileSwitcher switcher, ControllerMouse mouse)
 {
-    /// <summary>Mouse mode belongs to Xbox controllers as a group: any of them drives the pointer.</summary>
+    /// <summary>Mouse mode and rumble belong to the controllers as a group (Xbox, PlayStation, Switch): any of them drives the pointer.</summary>
     public const string ControllersId = "xinput";
 
     public ControllerMouse Mouse => mouse;
@@ -86,12 +86,12 @@ public sealed class FeatureService(DeviceHub hub, ProfileService profiles, Profi
     {
         var list = new List<DeviceFeature>();
 
-        // Xbox controllers.
-        var pads = hub.Input.Controllers.Where(c => c.Source.StartsWith("XInput")).ToList();
+        // Controllers IO Hub can read: Xbox, PlayStation and Switch.
+        var pads = hub.Input.Controllers.Where(c => c.IsUsablePad).ToList();
         list.Add(new DeviceFeature
         {
             Section = "Controllers", DeviceId = ControllersId,
-            DeviceName = pads.Count == 1 ? pads[0].Name : "Xbox controllers",
+            DeviceName = pads.Count == 1 ? pads[0].Name : "Controllers",
             Id = "mouse", Title = "Mouse mode", Kind = FeatureKind.Toggle,
             State = () => mouse.IsOn,
             Run = (action, _) => Task.FromResult(mouse.Set(action switch
@@ -106,7 +106,7 @@ public sealed class FeatureService(DeviceHub hub, ProfileService profiles, Profi
         list.Add(new DeviceFeature
         {
             Section = "Controllers", DeviceId = ControllersId,
-            DeviceName = pads.Count == 1 ? pads[0].Name : "Xbox controllers",
+            DeviceName = pads.Count == 1 ? pads[0].Name : "Controllers",
             Id = "rumble", Title = "Rumble", Kind = FeatureKind.Action,
             Run = (_, _) => { Integrations.Rumble.Play(); return Task.FromResult<string?>(null); },
         });

@@ -79,6 +79,7 @@ public sealed class WowRecorder : IDisposable
     void Record(uint pid)
     {
         FileStream? wav = null;
+        PressWatcher? presses = null;
         try
         {
             wav = new FileStream(FilePath!, FileMode.Create, FileAccess.Write, FileShare.Read, 1 << 16);
@@ -86,7 +87,7 @@ public sealed class WowRecorder : IDisposable
             var file = wav;
             var bytes = new byte[Rate * BytesPerFrame / 10];
             long nextQpc = 0;
-            var presses = new PressWatcher(Mark);
+            presses = new PressWatcher(Mark);
             ProcessLoopback.Run(pid,
                 stop: () => _stop || Elapsed >= MaxLength,
                 onPacket: (stereo, frames, _, qpc) =>
@@ -111,6 +112,7 @@ public sealed class WowRecorder : IDisposable
         }
         finally
         {
+            presses?.Stop();
             if (wav != null)
             {
                 long dataBytes = Interlocked.Read(ref _frames) * BytesPerFrame;
@@ -151,15 +153,20 @@ public sealed class WowRecorder : IDisposable
     }
 
     /// <summary>
-    /// Bookmarks every press while recording: mouse buttons, keys and Xbox controller buttons. Clicking the bobber just
+    /// Bookmarks every press while recording: mouse buttons, keys and controller buttons. Clicking the bobber just
     /// after the splash marks where a real bite was. Typing keys (letters, numbers, space…) are written as "a typing
     /// key" so chat never ends up in the file; only the moment matters.
     /// </summary>
     sealed class PressWatcher(Action<string> mark)
     {
         readonly bool[] _keys = new bool[256];
-        readonly int[] _pads = new int[Triggers.XInputPad.Slots];
-        long _nextPadRead;
+        readonly Dictionary<int, int> _pads = [];
+        readonly IDisposable _listening = Triggers.Pads.Listen();
+        List<int> _slots = [];
+        long _nextPadRead, _nextPadScan;
+
+        /// <summary>Recording stopped: PlayStation and Switch pads can go back to being read slowly.</summary>
+        public void Stop() => _listening.Dispose();
 
         public void Poll()
         {
@@ -171,14 +178,15 @@ public sealed class WowRecorder : IDisposable
                 if (down && !_keys[vk]) mark($"pressed: {Describe(vk)}");
                 _keys[vk] = down;
             }
-            // Empty controller slots are slow to ask about, so the pads are read every 20 ms.
+            // Empty controller slots are slow to ask about, so the pads are read every 20 ms and looked for every 2 s.
             long now = Environment.TickCount64;
             if (now < _nextPadRead) return;
             _nextPadRead = now + 20;
-            for (int slot = 0; slot < _pads.Length; slot++)
+            if (now >= _nextPadScan) { _slots = Triggers.Pads.Connected(); _nextPadScan = now + 2000; }
+            foreach (int slot in _slots)
             {
-                if (!Triggers.XInputPad.TryRead(slot, out int buttons)) { _pads[slot] = 0; continue; }
-                int pressed = buttons & ~_pads[slot];
+                if (!Triggers.Pads.TryRead(slot, out int buttons)) { _pads[slot] = 0; continue; }
+                int pressed = buttons & ~_pads.GetValueOrDefault(slot);
                 if (pressed != 0) mark($"pressed: controller {Triggers.ControllerButtons.Combo(pressed)}");
                 _pads[slot] = buttons;
             }

@@ -11,7 +11,7 @@
     <!-- WFO0003 wants DPI set through WinForms; the manifest setting is what WPF uses, so it stays. -->
     <NoWarn>$(NoWarn);WFO0003</NoWarn>
     <RootNamespace>IOHub</RootNamespace>
-    <Version>0.9.0</Version>
+    <Version>0.10.0-beta.1</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- Regenerate with tools/make_icon.py -->
     <ApplicationIcon>app.ico</ApplicationIcon>

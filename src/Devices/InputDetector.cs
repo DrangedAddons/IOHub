@@ -6,7 +6,8 @@ using Microsoft.Win32.SafeHandles;
 namespace IOHub.Devices;
 
 /// <summary>
-/// Controllers come from XInput (Xbox-style pads, with battery) plus any other HID gamepad or joystick.
+/// Controllers come from XInput (Xbox-style pads, with battery) plus any other HID gamepad or joystick; PlayStation
+/// and Switch pads among those are opened by <see cref="HidPads"/>.
 /// Keyboards and mice come from the Raw Input device list, grouped so one receiver with three interfaces
 /// shows as one device.
 /// </summary>
@@ -39,12 +40,56 @@ internal static partial class InputDetector
                 BatteryLevel = slot.Battery,
             });
         }
-        controllers.AddRange(Group(pads.Except(xinputHid), InputKind.Controller));
+        // PlayStation and Switch pads IO Hub reads itself: open them now, so they're ready for triggers and rumble.
+        var others = pads.Except(xinputHid).ToList();
+        HidPads.Sync(others.Select(p => p.Gamepad));
+        foreach (var device in Group(others, InputKind.Controller))
+            controllers.Add(Direct(device, others.Where(p => p.VidPid == device.VidPid && p.Name == device.Name)));
 
         return new InputSnapshot(
             controllers,
             Group(raw.Where(r => r.Type == RimTypeKeyboard), InputKind.Keyboard),
             Group(raw.Where(r => r.Type == RimTypeMouse), InputKind.Mouse));
+    }
+
+    /// <summary>A pad IO Hub reads over HID gets its model, its own source text and (on Bluetooth) its battery.</summary>
+    static InputDevice Direct(InputDevice device, IEnumerable<RawDevice> interfaces)
+    {
+        var info = interfaces.Select(i => HidPads.About(i.Path)).FirstOrDefault(i => i != null);
+        if (info is not { } pad) return device;
+        return new InputDevice
+        {
+            Kind = device.Kind, Name = device.Name, Vendor = device.Vendor, VidPid = device.VidPid,
+            Connection = device.Connection, Interfaces = device.Interfaces, IsWireless = device.IsWireless,
+            Source = "HID · read by IO Hub",
+            Model = pad.Model,
+            BatteryLevel = pad.Alive ? pad.Battery : -1,
+        };
+    }
+
+    public sealed record GamepadPath(string Path, ushort Vid, ushort Pid, bool Bluetooth);
+
+    /// <summary>HID game controllers (not Xbox ones) with their USB IDs, without opening them. Cheap enough to call every second.</summary>
+    public static List<GamepadPath> GamepadPaths()
+    {
+        var result = new List<GamepadPath>();
+        uint count = 0, size = (uint)Marshal.SizeOf<RawInputDeviceList>();
+        if (GetRawInputDeviceList(null, ref count, size) == uint.MaxValue || count == 0) return result;
+        var list = new RawInputDeviceList[count];
+        uint got = GetRawInputDeviceList(list, ref count, size);
+        if (got == uint.MaxValue) return result;
+        foreach (var d in list.Take((int)got))
+        {
+            if (d.dwType != RimTypeHid) continue;
+            var info = new RidDeviceInfo { cbSize = (uint)Marshal.SizeOf<RidDeviceInfo>() };
+            uint infoSize = info.cbSize;
+            if (GetRawInputDeviceInfoW(d.hDevice, RidiDeviceInfo, ref info, ref infoSize) == uint.MaxValue) continue;
+            if (!(info.hidUsagePage == 1 && info.hidUsage is 4 or 5 or 8)) continue;
+            var path = DeviceName(d.hDevice);
+            if (path == null || IsVirtual(path) || path.Contains("IG_", StringComparison.OrdinalIgnoreCase)) continue;
+            result.Add(new GamepadPath(path, (ushort)info.hidVendorId, (ushort)info.hidProductId, path.Contains(BluetoothHid, StringComparison.OrdinalIgnoreCase)));
+        }
+        return result;
     }
 
     /// <summary>A cheap fingerprint of XInput state (connected slots and battery levels) for change polling.</summary>
@@ -74,7 +119,11 @@ internal static partial class InputDetector
             .ThenBy(d => d.Name)
             .ToList();
 
-    sealed record RawDevice(uint Type, string Path, ushort UsagePage, ushort Usage, string Name, string Vendor, string VidPid, string Connection);
+    sealed record RawDevice(uint Type, string Path, ushort UsagePage, ushort Usage, string Name, string Vendor, string VidPid, string Connection,
+        ushort VendorId = 0, ushort ProductId = 0)
+    {
+        public GamepadPath Gamepad => new(Path, VendorId, ProductId, Connection == "Bluetooth");
+    }
 
     static List<RawDevice> EnumerateRaw()
     {
@@ -90,7 +139,7 @@ internal static partial class InputDetector
             var path = DeviceName(d.hDevice);
             if (path == null || IsVirtual(path)) continue;
 
-            ushort usagePage = 0, usage = 0;
+            ushort usagePage = 0, usage = 0, vendorId = 0, productId = 0;
             if (d.dwType == RimTypeHid)
             {
                 var info = new RidDeviceInfo { cbSize = (uint)Marshal.SizeOf<RidDeviceInfo>() };
@@ -98,6 +147,8 @@ internal static partial class InputDetector
                 if (GetRawInputDeviceInfoW(d.hDevice, RidiDeviceInfo, ref info, ref infoSize) == uint.MaxValue) continue;
                 usagePage = info.hidUsagePage;
                 usage = info.hidUsage;
+                vendorId = (ushort)info.hidVendorId;
+                productId = (ushort)info.hidProductId;
                 // Only game controllers matter from the generic HID list; the rest are headset buttons, RGB, etc.
                 if (!(usagePage == 1 && usage is 4 or 5 or 8)) continue;
             }
@@ -109,7 +160,7 @@ internal static partial class InputDetector
             var name = strings.Product is { Length: > 0 } p ? p : FallbackName(d.dwType, usage, vid, pid);
 
             result.Add(new RawDevice(d.dwType, path, usagePage, usage, name, vendor,
-                vid != "" && pid != "" ? $"{vid}:{pid}" : "", ConnectionFor(path, vid)));
+                vid != "" && pid != "" ? $"{vid}:{pid}" : "", ConnectionFor(path, vid), vendorId, productId));
         }
         return result;
     }
@@ -118,9 +169,11 @@ internal static partial class InputDetector
         path.Contains(@"\ROOT#", StringComparison.OrdinalIgnoreCase) ||
         path.Contains("RDP_", StringComparison.OrdinalIgnoreCase);
 
+    const string BluetoothHid = "{00001124-0000-1000-8000-00805f9b34fb}";
+
     static string ConnectionFor(string path, string vid)
     {
-        if (path.Contains("{00001124-0000-1000-8000-00805f9b34fb}", StringComparison.OrdinalIgnoreCase)) return "Bluetooth";
+        if (path.Contains(BluetoothHid, StringComparison.OrdinalIgnoreCase)) return "Bluetooth";
         if (path.Contains("{00001812-0000-1000-8000-00805f9b34fb}", StringComparison.OrdinalIgnoreCase)) return "Bluetooth LE";
         return vid == "" ? "Built-in" : "USB";
     }

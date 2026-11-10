@@ -116,8 +116,12 @@ public sealed class InputDevice
     /// <summary>"045E:0B13", or "" when the device has no USB IDs (built-in keyboards and touchpads).</summary>
     public string VidPid { get; init; } = "";
     public string Connection { get; init; } = "";
-    /// <summary>"XInput · Slot 1" or "HID"; controllers only.</summary>
+    /// <summary>"XInput · Slot 1", "HID · read by IO Hub" or "HID"; controllers only.</summary>
     public string Source { get; init; } = "";
+    /// <summary>A PlayStation or Switch pad IO Hub reads itself; null for Xbox pads and anything else.</summary>
+    public Triggers.PadModel? Model { get; init; }
+    /// <summary>IO Hub can read its buttons and rumble it: an Xbox pad, or a PlayStation or Switch one.</summary>
+    public bool IsUsablePad => Kind == InputKind.Controller && (Source.StartsWith("XInput") || Model != null);
     public int Interfaces { get; init; } = 1;
     public bool IsWireless { get; init; }
     /// <summary>0 empty … 3 full, -1 when unknown or wired.</summary>

@@ -21,7 +21,7 @@ public sealed class AppSettings
     public bool ShowNotices { get; set; } = true;
     public bool ConfirmNewDisplays { get; set; } = true;
 
-    // Mouse mode (an Xbox controller drives the mouse)
+    // Mouse mode (a controller drives the mouse)
     /// <summary>IO Hub is allowed to drive the mouse with a controller (instead of Steam). Off until someone turns it on.</summary>
     public bool ControllerMouse { get; set; }
     /// <summary>Pointer speed at full stick, in pixels a second.</summary>

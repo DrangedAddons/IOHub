@@ -41,12 +41,12 @@ public partial class DevicesPage
     List<Trigger> TriggersFor(DeviceFeature f) =>
         _profiles?.Data.Triggers.Where(t => t.ChangesDevice && t.DeviceId == f.DeviceId && t.Feature == f.Id).ToList() ?? [];
 
-    /// <summary>The feature device a listed item is: a sound device, a display (an LG TV), or any Xbox controller.</summary>
+    /// <summary>The feature device a listed item is: a sound device, a display (an LG TV), or any controller IO Hub can read.</summary>
     static string? FeatureKey(object? item) => item switch
     {
         AudioEndpoint a => a.Id,
         DisplayDevice d => d.Id,
-        InputDevice { Kind: InputKind.Controller } c when c.Source.StartsWith("XInput") => FeatureService.ControllersId,
+        InputDevice { IsUsablePad: true } => FeatureService.ControllersId,
         _ => null,
     };
 
@@ -251,7 +251,7 @@ public partial class DevicesPage
         var allow = new CheckBox
         {
             Style = Res<Style>("Switch"), IsChecked = _settings.ControllerMouse, Margin = new Thickness(0, 12, 0, 0),
-            Content = new TextBlock { Text = "Let IO Hub control the mouse with Xbox controllers", FontWeight = FontWeights.SemiBold },
+            Content = new TextBlock { Text = "Let IO Hub control the mouse with controllers", FontWeight = FontWeights.SemiBold },
             ToolTip = "Off: mouse mode stays off, whatever triggers say.",
         };
         allow.Click += (_, _) =>

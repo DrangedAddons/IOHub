@@ -3,7 +3,8 @@ using System.Runtime.InteropServices;
 namespace IOHub.Integrations;
 
 /// <summary>
-/// Rumbles Xbox controllers (anything XInput sees) through XInputSetState, in a pattern, at a strength, for a length.
+/// Rumbles every controller (Xbox through XInputSetState, PlayStation and Switch through their HID output reports)
+/// in a pattern, at a strength, for a length.
 /// The three are set once, on the Devices page (AppSettings.Rumble, "double;medium;normal"), and every trigger that
 /// rumbles plays that. Trigger values from before patterns ("medium") were a strength alone.
 /// </summary>
@@ -133,6 +134,7 @@ public static class Rumble
     {
         var v = new XInputVibration { Left = left, Right = right };
         for (uint slot = 0; slot < 4; slot++) XInputSetState(slot, ref v);
+        try { Devices.HidPads.SetRumble(left, right); } catch { }
     }
 
     [StructLayout(LayoutKind.Sequential)]

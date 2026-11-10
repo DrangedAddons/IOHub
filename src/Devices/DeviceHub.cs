@@ -43,10 +43,11 @@ public sealed class DeviceHub : IDisposable
         _debounce = new DispatcherTimer(DispatcherPriority.Normal, _ui) { Interval = TimeSpan.FromMilliseconds(450) };
         _debounce.Tick += (_, _) => { _debounce.Stop(); Refresh(); };
 
-        // XInput has no connect notification, and Bluetooth pads don't always raise a device change.
+        // XInput has no connect notification, and Bluetooth pads don't always raise a device change. PlayStation and
+        // Switch pads count too: one starting to send, or its battery level moving, redraws the Devices page.
         _xinputPoll = new Timer(_ =>
         {
-            int fp = InputDetector.XInputFingerprint();
+            int fp = InputDetector.XInputFingerprint() * 397 ^ HidPads.Fingerprint();
             if (Interlocked.Exchange(ref _xinputFingerprint, fp) != fp) _ui.BeginInvoke(ScheduleRefresh);
         }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(1.5));
     }
@@ -88,14 +89,23 @@ public sealed class DeviceHub : IDisposable
                 Displays = d ?? [];
                 (var i, InputError) = await input;
                 Input = i ?? new InputSnapshot([], [], []);
+                Triggers.ControllerButtons.Names = NamesFor(Input.Controllers);
                 (var c, CameraError) = await cameras;
                 Cameras = c ?? [];
-                _xinputFingerprint = InputDetector.XInputFingerprint();
+                _xinputFingerprint = InputDetector.XInputFingerprint() * 397 ^ HidPads.Fingerprint();
             } while (_refreshAgain);
             LastUpdated = DateTime.Now;
             Refreshed?.Invoke();
         }
         finally { _refreshing = false; }
+    }
+
+    /// <summary>Xbox button names, unless every usable controller is a PlayStation or Switch one of the same kind.</summary>
+    static Triggers.ControllerButtons.Layout NamesFor(IReadOnlyList<InputDevice> controllers)
+    {
+        var usable = controllers.Where(c => c.IsUsablePad).ToList();
+        var layouts = usable.Select(c => c.Model is { } m ? Triggers.ControllerButtons.LayoutOf(m) : Triggers.ControllerButtons.Layout.Xbox).Distinct().ToList();
+        return layouts.Count == 1 ? layouts[0] : Triggers.ControllerButtons.Layout.Xbox;
     }
 
     void RefreshAudio()

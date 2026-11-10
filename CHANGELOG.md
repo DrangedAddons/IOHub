@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.10.0-beta.1
+- **PlayStation and Switch controllers work without extra software.** IO Hub reads DualShock 4, DualSense (and
+  DualSense Edge), Switch Pro Controllers and Joy-Cons itself, over USB or Bluetooth. No DS4Windows, BetterJoy or Steam
+  needed. They do everything an Xbox controller does here:
+  - **Controller triggers**: presses, taps, holds, While held and the profile picker.
+  - **Mouse mode**: sticks, clicks, scrolling and the D-pad.
+  - **Rumble**: the Rumble function and the WoW fishing bite. Switch pads buzz at one strength on both sides, since
+    their rumble works differently.
+  - **Buttons map by position**, the way Steam does it: the bottom face button is A on every controller (Cross on
+    PlayStation, B on Switch). Share/Create/Minus are View, Options/Plus are Menu, and the PS and Home buttons are
+    the Xbox button. Triggers work on any controller, whichever one recorded them.
+  - **Button names follow your controller.** With only PlayStation pads connected, triggers read *PS + Cross*; with
+    only Switch pads, *Home + B*. Mixed or Xbox pads keep the Xbox names.
+  - Three new buttons can be used in triggers: the PlayStation **touchpad click**, the DualSense **mic button** and the
+    Switch **Capture** button.
+  - A left and right Joy-Con together count as one controller.
+  - The Devices page shows these pads as *read by IO Hub*, with their battery level on Bluetooth, and gives them the
+    controller functions (Mouse mode, Rumble).
+- **One press, one trigger.** In a game with Steam Input, Steam adds a virtual Xbox pad for a PlayStation or Switch pad,
+  so IO Hub sees the same press twice. It now fires once.
+- Notes:
+  - On Bluetooth, the first rumble switches a PlayStation pad to its full report mode, as Steam does. A game that reads
+    it through old DirectInput loses it until it reconnects.
+  - If DS4Windows or BetterJoy hides the real pad, IO Hub reads the Xbox pad they make instead, as before.
+  - Tested against the report formats only; nobody has tried it on a real PlayStation or Switch pad yet.
+
 ## 0.9.0
 - **WoW fishing bite trigger.** On the Triggers page, *New trigger* → Integrations → *WoW fishing bite*, next to Steam
   Big Picture. It fires when your bobber splashes in World of Warcraft, and starts out rumbling your controller. It can

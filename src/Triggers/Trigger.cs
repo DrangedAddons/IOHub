@@ -11,7 +11,7 @@ public enum TriggerKind
     ProfilePicker = 2,
     /// <summary>Steam Big Picture opening (and closing). An integration.</summary>
     SteamBigPicture = 3,
-    /// <summary>A press, double tap, triple tap or hold of a button combination on an Xbox controller.</summary>
+    /// <summary>A press, double tap, triple tap or hold of a button combination on a controller (Xbox, PlayStation or Switch).</summary>
     ControllerCombo = 4,
     /// <summary>Before 0.6: the controller version of ProfilePicker. Now a ControllerCombo with Then = Picker; only read from old files.</summary>
     ControllerPicker = 5,
