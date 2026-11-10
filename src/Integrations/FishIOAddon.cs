@@ -15,16 +15,7 @@ public sealed record FishIOInstall(string Flavor, string Version, string Folder,
     public string FlavorFolder => Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(Folder)!)!)!;
 
     /// <summary>"WoW Forever", "Retail", "Classic Era"…</summary>
-    public string Game => Flavor switch
-    {
-        "_forever_" => "WoW Forever",
-        "_retail_" => "Retail",
-        "_classic_era_" => "Classic Era",
-        "_classic_" => "Classic",
-        "_ptr_" => "PTR",
-        "_beta_" => "Beta",
-        _ => Flavor.Trim('_'),
-    };
+    public string Game => FishIOAddon.GameName(Flavor);
 }
 
 /// <summary>
@@ -83,18 +74,37 @@ public static class FishIOAddon
     };
 
     /// <summary>
-    /// WoW versions FishIO fits that are installed but don't have it, as their folders (...\World of Warcraft\_forever_).
+    /// Every WoW version installed (a _name_ folder with a Wow*.exe in it), as its folder (...\World of Warcraft\_forever_),
+    /// and whether FishIO is made for it. FishIO can go in any of them; outside WoW Forever, WoW may list it as out of date.
     /// </summary>
-    public static IReadOnlyList<(string Flavor, string Folder)> Missing()
-    {
-        var have = Find().Select(i => i.Flavor).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        return WowRoots().SelectMany(root => Flavors.Select(f => (Flavor: f, Folder: Path.Combine(root, f))))
-            .Where(x => Directory.Exists(x.Folder) && !have.Contains(x.Flavor))
-            .DistinctBy(x => x.Flavor).ToList();
-    }
+    public static IReadOnlyList<(string Flavor, string Folder, bool Made)> Games() =>
+        WowRoots().SelectMany(root =>
+            {
+                try { return Directory.GetDirectories(root, "_*_"); }
+                catch { return []; }
+            })
+            .Where(dir => { try { return Directory.EnumerateFiles(dir, "Wow*.exe").Any(); } catch { return false; } })
+            .Select(dir => (Flavor: Path.GetFileName(dir), Folder: dir, Made: Flavors.Contains(Path.GetFileName(dir), StringComparer.OrdinalIgnoreCase)))
+            .DistinctBy(g => g.Folder, StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(g => g.Made).ThenBy(g => GameName(g.Flavor))
+            .ToList();
 
-    /// <summary>The name WoW versions go by: "WoW Forever".</summary>
-    public static string GameName(string flavor) => new FishIOInstall(flavor, "", "").Game;
+    /// <summary>The name a WoW version goes by: "WoW Forever", "Classic Era PTR".</summary>
+    public static string GameName(string flavor) => flavor.ToLowerInvariant() switch
+    {
+        "_forever_" => "WoW Forever",
+        "_retail_" => "Retail",
+        "_ptr_" => "Retail PTR",
+        "_xptr_" => "Retail Experimental PTR",
+        "_beta_" => "Retail Beta",
+        "_classic_" => "Classic",
+        "_classic_ptr_" => "Classic PTR",
+        "_classic_beta_" => "Classic Beta",
+        "_classic_era_" => "Classic Era",
+        "_classic_era_ptr_" => "Classic Era PTR",
+        "_anniversary_" => "Anniversary",
+        _ => System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(flavor.Trim('_').Replace('_', ' ')),
+    };
 
     /// <summary>Writes IO Hub's copy into a WoW version folder (..\_forever_). Returns an error, or null.</summary>
     public static string? Install(string flavorFolder)

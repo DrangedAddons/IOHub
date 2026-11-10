@@ -1,10 +1,14 @@
 # Changelog
 
 ## 0.9.1
-- **IO Hub installs FishIO.** The WoW fishing bite trigger, and the controller's functions on the Devices page, have
-  *Install in WoW Forever*, *Update* and *Remove* for the FishIO addon. IO Hub carries it inside the exe and updates
-  installed copies when it starts with a newer one, so there's nothing to download. A copy with `.git` in its folder
-  is a development copy and is never changed or removed.
+- **IO Hub installs FishIO.** IO Hub carries the FishIO addon inside the exe and updates installed copies when it
+  starts with a newer one, so there's nothing to download. On the WoW fishing bite trigger, and under the controller's
+  functions on the Devices page:
+  - Each install shows its WoW version, FishIO version and folder, with *Open folder*, *Reinstall* (or *Update*) and
+    *Remove*.
+  - *Install in* lists every WoW version IO Hub finds (Retail, Classic, Classic Era, Anniversary, PTRs…), WoW Forever
+    first. Pick one and install. FishIO is made for WoW Forever; elsewhere it warns that WoW may list it as out of date.
+  - A copy with `.git` in its folder is a development copy: shown, never changed or removed.
   - FishIO is no longer in the DrangedAddons manager, so the two don't fight over its folder. Its source moved into
     this repo (addons/FishIO).
 
