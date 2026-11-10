@@ -485,10 +485,10 @@ public partial class TriggersPage : UserControl
     }
 
     /// <summary>
-    /// FishIO, which IO Hub carries and installs. Each install: which WoW version, its version, its folder (Open folder),
-    /// Reinstall or Update, and Remove; a development copy (a git working copy) is shown but never changed. Then a pick
-    /// of every WoW version found, to install it in the one you want. Also on the Devices page, under the controller's
-    /// functions.
+    /// FishIO, which IO Hub carries and installs: a dropdown of every WoW version found (with FishIO's state in each),
+    /// Install (or Update), Open folder, and "…" for Reinstall, Remove and Copy folder path, then a line saying what's
+    /// there and where. A development copy (a git working copy) is shown but never changed. Also on the Devices page,
+    /// under the controller's functions.
     /// </summary>
     public static UIElement FishIOControls(Action changed)
     {
@@ -514,47 +514,8 @@ public partial class TriggersPage : UserControl
                  + "and updates installed copies when it starts with a newer one. Changes load at the next /reload or login.",
         });
 
-        Button Act(string text, Func<string?> run, string? tip = null)
-        {
-            var b = new Button { Style = S("GhostButton"), Padding = new Thickness(10, 3, 10, 4), Margin = new Thickness(0, 0, 6, 0), Content = text, ToolTip = tip, VerticalAlignment = VerticalAlignment.Center };
-            b.Click += (_, _) =>
-            {
-                if (run() is { } error) Ui.DarkDialog.Show(Window.GetWindow(b), "FishIO", error);
-                changed();
-            };
-            return b;
-        }
-
-        // One block per install: where it is, and what can be done to it.
-        foreach (var i in installs)
-        {
-            var item = new StackPanel { Margin = new Thickness(0, 10, 0, 0) };
-            var line = new WrapPanel();
-            line.Children.Add(new TextBlock
-            {
-                Text = $"{i.Game}: {i.Version}" + (i.DevCopy ? " (development copy, IO Hub leaves it alone)" : i.Outdated ? $" (IO Hub has {bundled})" : ""),
-                FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0),
-            });
-            line.Children.Add(Act("Open folder", () =>
-            {
-                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(i.Folder) { UseShellExecute = true }); return null; }
-                catch (Exception ex) { return ex.Message; }
-            }));
-            if (!i.DevCopy)
-            {
-                line.Children.Add(Act(i.Outdated ? $"Update to {bundled}" : "Reinstall", () => Integrations.FishIOAddon.Install(i.FlavorFolder),
-                    $"Writes IO Hub's FishIO {bundled} over this copy."));
-                line.Children.Add(Act("Remove", () => Integrations.FishIOAddon.Remove(i),
-                    "Deletes this FishIO folder. FishIO puts your sound settings back when you log out, so remove it between sessions."));
-            }
-            item.Children.Add(line);
-            item.Children.Add(new TextBlock { Text = i.Folder, Style = S("Muted"), FontSize = 11.5, Margin = new Thickness(0, 3, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = i.Folder });
-            box.Children.Add(item);
-        }
-
-        // Install in a WoW version: every one found, the ones it's made for first.
-        var have = installs.Select(i => i.Flavor).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var open = games.Where(g => !have.Contains(g.Flavor)).ToList();
+        // One row: which WoW version (a dropdown of every one found, FishIO's state in each), Install or Update, Open
+        // folder, and "…" for the rest. One line of detail under it.
         if (games.Count == 0)
         {
             box.Children.Add(new TextBlock
@@ -562,42 +523,123 @@ public partial class TriggersPage : UserControl
                 Style = S("Muted"), Foreground = B("WarnBrush"), TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.None, Margin = new Thickness(0, 10, 0, 0),
                 Text = "IO Hub couldn't find World of Warcraft. Start the game once with IO Hub running and it will find it.",
             });
+            return box;
         }
-        else if (open.Count > 0)
-        {
-            if (_fishIOPick == null || !open.Any(g => g.Folder == _fishIOPick)) _fishIOPick = open[0].Folder;
-            var pick = open.First(g => g.Folder == _fishIOPick);
-            var row = new Grid { Margin = new Thickness(0, 12, 0, 0) };
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            var label = new TextBlock { Text = "Install in", Foreground = B("MutedBrush"), Margin = new Thickness(0, 4, 10, 0) };
-            row.Children.Add(label);
-            var pills = new WrapPanel();
-            foreach (var g in open)
-            {
-                var pill = new ToggleButton
-                {
-                    Style = S("PillToggle"), Content = Integrations.FishIOAddon.GameName(g.Flavor), IsChecked = g.Folder == _fishIOPick,
-                    Background = B("AccentBrush"), Margin = new Thickness(0, 0, 6, 6), ToolTip = g.Folder,
-                };
-                pill.Click += (_, _) => { _fishIOPick = g.Folder; changed(); };
-                pills.Children.Add(pill);
-            }
-            Grid.SetColumn(pills, 1);
-            row.Children.Add(pills);
-            box.Children.Add(row);
+        Integrations.FishIOInstall? InstallIn(string flavor) => installs.FirstOrDefault(i => i.Flavor.Equals(flavor, StringComparison.OrdinalIgnoreCase));
+        // Start on a version that has it, else the one it's made for.
+        if (_fishIOPick == null || !games.Any(g => g.Folder == _fishIOPick))
+            _fishIOPick = (games.FirstOrDefault(g => InstallIn(g.Flavor) != null).Folder) ?? games[0].Folder;
+        var pick = games.First(g => g.Folder == _fishIOPick);
+        var installed = InstallIn(pick.Flavor);
+        string name = Integrations.FishIOAddon.GameName(pick.Flavor);
+        string State(Integrations.FishIOInstall? i) => i == null ? "not installed" : i.DevCopy ? $"{i.Version}, development copy" : $"{i.Version} installed";
 
-            var go = new WrapPanel();
-            go.Children.Add(Act($"Install in {Integrations.FishIOAddon.GameName(pick.Flavor)}", () => Integrations.FishIOAddon.Install(pick.Folder),
-                $"Puts FishIO {bundled} in {pick.Folder}\\Interface\\AddOns\\FishIO."));
-            box.Children.Add(go);
-            if (!pick.Made)
-                box.Children.Add(new TextBlock
-                {
-                    Style = S("Muted"), Foreground = B("WarnBrush"), TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.None, Margin = new Thickness(0, 6, 0, 0),
-                    Text = $"FishIO is made for WoW Forever. {Integrations.FishIOAddon.GameName(pick.Flavor)} may list it as out of date (tick Load out of date AddOns), and it hasn't been tried there.",
-                });
+        void Run(FrameworkElement from, Func<string?> action)
+        {
+            if (action() is { } error) Ui.DarkDialog.Show(Window.GetWindow(from), "FishIO", error);
+            changed();
         }
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
+
+        // The version dropdown, the app's own kind: a button with a chevron that opens a menu.
+        var picker = new Button { Style = S("GhostButton"), Padding = new Thickness(12, 4, 10, 5), MinWidth = 200, HorizontalContentAlignment = HorizontalAlignment.Stretch, ToolTip = pick.Folder };
+        var face = new Grid();
+        face.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        face.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        face.Children.Add(new TextBlock { Text = name, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
+        var chevron = new TextBlock { Text = "", FontFamily = (FontFamily)Application.Current.FindResource("IconFont"), FontSize = 9, Margin = new Thickness(12, 1, 0, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = B("MutedBrush") };
+        Grid.SetColumn(chevron, 1);
+        face.Children.Add(chevron);
+        picker.Content = face;
+        picker.Click += (_, _) =>
+        {
+            var menu = new ContextMenu { PlacementTarget = picker, Placement = PlacementMode.Bottom };
+            foreach (var g in games)
+            {
+                var item = new MenuItem
+                {
+                    Header = $"{Integrations.FishIOAddon.GameName(g.Flavor)}  ·  {State(InstallIn(g.Flavor))}",
+                    FontWeight = g.Folder == pick.Folder ? FontWeights.SemiBold : FontWeights.Normal, ToolTip = g.Folder,
+                };
+                item.Click += (_, _) => { _fishIOPick = g.Folder; changed(); };
+                menu.Items.Add(item);
+            }
+            menu.IsOpen = true;
+        };
+        row.Children.Add(picker);
+
+        // Install, or Update when IO Hub has newer. Installed and current (or a development copy): nothing to do.
+        var main = new Button { Style = S("GhostButton"), Padding = new Thickness(14, 4, 14, 5), Margin = new Thickness(8, 0, 0, 0), FontWeight = FontWeights.SemiBold };
+        if (installed == null)
+        {
+            main.Content = "Install";
+            main.ToolTip = $"Puts FishIO {bundled} in {pick.Folder}\\Interface\\AddOns\\FishIO.";
+            main.Click += (_, _) => Run(main, () => Integrations.FishIOAddon.Install(pick.Folder));
+        }
+        else if (installed.Outdated)
+        {
+            main.Content = $"Update to {bundled}";
+            main.Click += (_, _) => Run(main, () => Integrations.FishIOAddon.Install(pick.Folder));
+        }
+        else
+        {
+            main.Content = "Installed";
+            main.IsEnabled = false;
+        }
+        row.Children.Add(main);
+
+        // The FishIO folder if it's there, otherwise the AddOns folder it would go in.
+        var addons = System.IO.Path.Combine(pick.Folder, "Interface", "AddOns");
+        var openTarget = installed?.Folder ?? (Directory.Exists(addons) ? addons : pick.Folder);
+        var open = new Button { Style = S("GhostButton"), Padding = new Thickness(14, 4, 14, 5), Margin = new Thickness(6, 0, 0, 0), Content = "Open folder", ToolTip = openTarget };
+        open.Click += (_, _) => Run(open, () =>
+        {
+            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(openTarget) { UseShellExecute = true }); return null; }
+            catch (Exception ex) { return ex.Message; }
+        });
+        row.Children.Add(open);
+
+        // "…": the less common things.
+        var more = new Button { Style = S("IconButton"), Content = "", Margin = new Thickness(4, 0, 0, 0), ToolTip = "More", VerticalAlignment = VerticalAlignment.Center };
+        more.Click += (_, _) =>
+        {
+            var menu = new ContextMenu { PlacementTarget = more, Placement = PlacementMode.Bottom };
+            MenuItem Item(string header, bool enabled, Action click, string? tip = null)
+            {
+                var item = new MenuItem { Header = header, IsEnabled = enabled, ToolTip = tip };
+                ToolTipService.SetShowOnDisabled(item, true);
+                item.Click += (_, _) => click();
+                return item;
+            }
+            bool own = installed is { DevCopy: false };
+            string devTip = "A development copy (it has .git): IO Hub leaves it alone.";
+            menu.Items.Add(Item($"Reinstall {bundled}", own, () => Run(more, () => Integrations.FishIOAddon.Install(pick.Folder)),
+                installed?.DevCopy == true ? devTip : installed == null ? "Not installed here." : "Writes IO Hub's copy over this one."));
+            menu.Items.Add(Item("Remove", own, () => Run(more, () => Integrations.FishIOAddon.Remove(installed!)),
+                installed?.DevCopy == true ? devTip : installed == null ? "Not installed here." : "Deletes the FishIO folder. FishIO puts your sound settings back when you log out, so remove it between sessions."));
+            menu.Items.Add(new Separator());
+            menu.Items.Add(Item("Copy folder path", true, () => { try { Clipboard.SetText(installed?.Folder ?? System.IO.Path.Combine(addons, "FishIO")); } catch { } }));
+            menu.IsOpen = true;
+        };
+        row.Children.Add(more);
+        box.Children.Add(row);
+
+        // The detail line: what's there, where, and anything to know.
+        string detail = installed switch
+        {
+            null => $"Not installed in {name}. Install puts FishIO {bundled} in {System.IO.Path.Combine(addons, "FishIO")}.",
+            { DevCopy: true } => $"{installed.Version} in {installed.Folder}. A development copy (it has .git), so IO Hub doesn't change or remove it.",
+            { Outdated: true } => $"{installed.Version} in {installed.Folder}. IO Hub has {bundled}.",
+            _ => $"{installed.Version} in {installed.Folder}.",
+        };
+        box.Children.Add(new TextBlock { Text = detail, Style = S("Muted"), FontSize = 11.5, TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.None, Margin = new Thickness(0, 6, 0, 0) });
+        if (!pick.Made)
+            box.Children.Add(new TextBlock
+            {
+                Style = S("Muted"), Foreground = B("WarnBrush"), FontSize = 11.5, TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.None, Margin = new Thickness(0, 4, 0, 0),
+                Text = $"FishIO is made for WoW Forever. {name} may list it as out of date (tick Load out of date AddOns), and it hasn't been tried there.",
+            });
         return box;
     }
 

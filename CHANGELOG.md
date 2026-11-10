@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.0-beta.2
+- **FishIO's controls are one row.** A dropdown of every WoW version IO Hub finds, each with FishIO's state there
+  (*0.1.0 installed*, *not installed*, *development copy*), then *Install* (or *Update*) and *Open folder*. Reinstall,
+  Remove and Copy folder path are in the *…* menu. A line underneath says which FishIO is there and where, plus the
+  out-of-date warning for versions other than WoW Forever.
+
 ## 0.10.0-beta.1
 - **IO Hub installs FishIO.** IO Hub carries the FishIO addon inside the exe and updates installed copies when it
   starts with a newer one, so there's nothing to download. On the WoW fishing bite trigger, and under the controller's
