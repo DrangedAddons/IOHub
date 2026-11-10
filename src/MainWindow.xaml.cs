@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using IOHub.Devices;
+using IOHub.Integrations;
 using IOHub.Pages;
 using IOHub.Profiles;
 using IOHub.Triggers;
@@ -20,9 +21,11 @@ public partial class MainWindow : Window
     readonly DevicesPage _devicesPage;
     readonly ProfilesPage _profilesPage;
     readonly TriggersPage _triggersPage;
+    readonly IntegrationsPage _integrationsPage;
     readonly SettingsPage _settingsPage;
     readonly ProfileSwitcher _switcher;
     readonly ControllerMouse _mouse;
+    readonly WowFishing _fishing;
     readonly FeatureService _features;
     readonly TriggerEngine _engine;
     readonly UpdateChecker _updates;
@@ -50,7 +53,8 @@ public partial class MainWindow : Window
         _switcher.Notice += (title, detail, color) => { if (_settings.ShowNotices) _toast.Show(title, detail, color: color); };
         _hub.Refreshed += _switcher.Observe;
         _mouse = new ControllerMouse(_settings);
-        _features = new FeatureService(_hub, _profiles, _switcher, _mouse);
+        _fishing = new WowFishing(_settings);
+        _features = new FeatureService(_hub, _profiles, _switcher, _mouse, _fishing);
         _engine = new TriggerEngine(_profiles, _switcher, _features, _toast, Dispatcher, () => ProfileMatcher.Active(_profiles, _hub));
 
         _overviewPage = new OverviewPage(_hub, _profiles, _settings);
@@ -59,6 +63,7 @@ public partial class MainWindow : Window
         _devicesPage = new DevicesPage(_hub, _settings, _features, _profiles);
         _profilesPage = new ProfilesPage(_hub, _profiles, _settings) { TvWanted = _switcher.StopTurnOff };
         _triggersPage = new TriggersPage(_profiles, _engine, _features, _settings);
+        _integrationsPage = new IntegrationsPage(_settings, _fishing);
         // Devices page → Triggers page: a new trigger for a device feature, or an existing one.
         _devicesPage.AddTrigger += (f, action, value) => { TriggersNav.IsChecked = true; _triggersPage.AddForFeature(f, action, value); };
         _devicesPage.OpenTrigger += id => { TriggersNav.IsChecked = true; _triggersPage.Open(id); };
@@ -134,6 +139,7 @@ public partial class MainWindow : Window
         PageHost.Content = sender == ProfilesNav ? _profilesPage
             : sender == DevicesNav ? _devicesPage
             : sender == TriggersNav ? _triggersPage
+            : sender == IntegrationsNav ? _integrationsPage
             : sender == SettingsNav ? _settingsPage
             : _overviewPage;
     }
@@ -167,6 +173,7 @@ public partial class MainWindow : Window
         _quitting = true;
         _engine.Dispose();
         _mouse.Dispose();
+        _fishing.Dispose();
         _tray.Dispose();
         _hub.Dispose();
         _toast.Close();

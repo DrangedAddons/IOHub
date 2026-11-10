@@ -28,6 +28,14 @@ public sealed class AppSettings
     public int MouseSpeed { get; set; } = 1400;
     public bool MousePauseInFullscreen { get; set; } = true;
 
+    // Integrations: World of Warcraft
+    /// <summary>Rumble the controllers when WoW's fishing bobber splashes. Off until someone turns it on.</summary>
+    public bool WowFishingRumble { get; set; }
+    /// <summary>"low", "normal" or "high" (WowFishing.Sensitivities).</summary>
+    public string WowFishingSensitivity { get; set; } = "normal";
+    /// <summary>"light", "medium" or "strong" (WowFishing.Strengths).</summary>
+    public string WowRumbleStrength { get; set; } = "medium";
+
     // Updates
     public bool CheckForUpdates { get; set; } = true;
     public bool InstallUpdatesAutomatically { get; set; }

@@ -74,12 +74,14 @@ public sealed class DeviceFeature
 /// Lists every changeable device feature IO Hub knows about right now, and runs them. New features are one entry
 /// here: the Triggers and Devices pages pick them up from this list.
 /// </summary>
-public sealed class FeatureService(DeviceHub hub, ProfileService profiles, ProfileSwitcher switcher, ControllerMouse mouse)
+public sealed class FeatureService(DeviceHub hub, ProfileService profiles, ProfileSwitcher switcher, ControllerMouse mouse,
+    Integrations.WowFishing fishing)
 {
     /// <summary>Mouse mode belongs to Xbox controllers as a group: any of them drives the pointer.</summary>
     public const string ControllersId = "xinput";
 
     public ControllerMouse Mouse => mouse;
+    public Integrations.WowFishing Fishing => fishing;
 
     public List<DeviceFeature> All()
     {
@@ -98,6 +100,20 @@ public sealed class FeatureService(DeviceHub hub, ProfileService profiles, Profi
                 FeatureAction.On => true,
                 FeatureAction.Off => false,
                 _ => !mouse.IsOn,
+            })),
+        });
+        // Integrations → World of Warcraft. Every controller rumbles, so it belongs to them as a group like mouse mode.
+        list.Add(new DeviceFeature
+        {
+            Section = "Controllers", DeviceId = ControllersId,
+            DeviceName = pads.Count == 1 ? pads[0].Name : "Xbox controllers",
+            Id = "wow-fishing", Title = "Rumble on WoW fishing bite", Kind = FeatureKind.Toggle,
+            State = () => fishing.IsOn,
+            Run = (action, _) => Task.FromResult(fishing.Set(action switch
+            {
+                FeatureAction.On => true,
+                FeatureAction.Off => false,
+                _ => !fishing.IsOn,
             })),
         });
 
