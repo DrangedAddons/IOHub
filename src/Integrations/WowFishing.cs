@@ -70,6 +70,14 @@ public sealed class WowFishing : IDisposable
     /// <summary>One splash plays for about 3 seconds; one bite per splash.</summary>
     const int MatchCooldownMs = 3000;
 
+    /// <summary>
+    /// A splash this much quieter than your usual one is another angler's. In a session next to someone, yours were up to
+    /// 14 dB under your usual and theirs 22 dB or more, so this sits between.
+    /// </summary>
+    const float OtherAnglerDb = 18;
+    /// <summary>How many of your recent splashes set your usual level.</summary>
+    const int YourSplashes = 15;
+
     /// <summary>True while WoW's sound is being matched against the splash, false when it's going by level alone.</summary>
     public bool MatchingSound => _ears is { Running: true };
 
@@ -175,11 +183,24 @@ public sealed class WowFishing : IDisposable
         var ears = new Ears(pid);
         var ui = _timer.Dispatcher;
         var matcher = new SplashMatcher();
-        long nextQpc = 0, lastNear = 0;
+        long nextQpc = 0, lastNear = 0, lastIgnored = 0;
         // The sound burst going on now, for the miss log: its best score, when it started, and whether it rumbled.
         SplashScore? burstBest = null;
         long burstStart = 0, burstLastLoud = 0;
         bool burstHit = false;
+        // How loud your splashes have been (the peak when each matched). Your bobber is the closest, so its splash is
+        // the loudest; another angler's is further off and well quieter. Only splashes that rumbled count, and only a
+        // quieter splash is ever ignored, so a few of someone else's at the start can't lock out yours.
+        var yourPeaks = new List<float>();
+
+        // Your usual splash level when this one is far quieter than it, so someone else's; otherwise null.
+        float? OtherAngler(float peakDb)
+        {
+            if (yourPeaks.Count < 3) return null;
+            var sorted = yourPeaks.Order().ToList();
+            float yours = sorted[sorted.Count / 2];
+            return peakDb < yours - OtherAnglerDb ? yours : null;
+        }
 
         void OnFrame(SplashScore? scored)
         {
@@ -192,12 +213,24 @@ public sealed class WowFishing : IDisposable
                 if (score.Corr < rule.MinCorr || score.ShapeDb > rule.MaxShapeDb || score.RiseDb < rule.MinRiseDb) continue;
                 any = true;
                 if (now - rule.LastHit < MatchCooldownMs) continue;
+                // Someone else's bobber, further away: it doesn't rumble, and doesn't hold off the next splash either.
+                if (OtherAngler(score.LevelDb) is { } yours)
+                {
+                    burstHit = true;
+                    if (now - lastIgnored < MatchCooldownMs) continue;
+                    lastIgnored = now;
+                    SwitchLog.Write($"WoW fishing: ignored a splash {yours - score.LevelDb:0} dB quieter than yours, someone else's ({score})");
+                    Recorder.Mark($"ignored, someone else's: {score}");
+                    continue;
+                }
                 rule.LastHit = now;
                 burstHit = true;
                 SwitchLog.Write($"WoW fishing: splash heard ({score})");
                 Recorder.Mark($"detected: {score}");
                 var id = rule.Id;
                 ui.BeginInvoke(() => Bite?.Invoke(id));
+                yourPeaks.Add(score.LevelDb);
+                if (yourPeaks.Count > YourSplashes) yourPeaks.RemoveAt(0);
             }
             // Close calls go in a recording too, at most one a second, to see where the line should be.
             if (!any && score.Corr >= 0.6f && score.ShapeDb <= 9 && score.RiseDb >= 2 && now - lastNear >= 1000)

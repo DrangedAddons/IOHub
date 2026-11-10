@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.0-beta.8
+- **Other anglers' splashes are ignored.** Your bobber is the closest, so your splash is the loudest. The trigger
+  learns how loud your last 15 splashes were and ignores one 18 dB or more quieter than the usual: someone else's,
+  further off. switch.log says so (*ignored a splash 25 dB quieter than yours, someone else's*).
+  - An ignored splash doesn't hold off the next one either. Before, someone else's splash could rumble and then your
+    own bite a second or two later was skipped.
+  - Replayed on a session fishing next to another player: every one of their splashes ignored, all of yours rumbled,
+    including two that had been skipped. A splash louder than yours always counts, so someone fishing right on top
+    of your bobber still can.
+
 ## 0.9.0-beta.7
 - **Rumble patterns.** Devices → the controller's functions → *Rumble settings*: pick a pattern (Single, Double,
   Triple, Long buzz, Heartbeat, Rising, Flutter), a strength (Light, Medium, Strong) and a length (Short, Normal,
