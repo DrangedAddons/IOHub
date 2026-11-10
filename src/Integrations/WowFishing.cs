@@ -8,13 +8,17 @@ namespace IOHub.Integrations;
 public enum WowListenState { Stopped, NoGame, Listening }
 
 /// <summary>
-/// The "WoW fishing bite" trigger's ears. Watches World of Warcraft's own sound (its audio sessions' peak meters, so
-/// music or voice chat from other apps don't count) and spots the bite splash with one <see cref="SplashDetector"/>
-/// per trigger, each at its own sensitivity. WoW gives addons no event for the bite, which is why this goes by sound.
+/// The "WoW fishing bite" trigger's ears. Listens to World of Warcraft's own sound (music or voice chat from other apps
+/// don't count) and spots the bite splash. WoW gives addons no event for the bite, which is why this goes by sound.
 ///
-/// Runs on the UI thread, like <see cref="Devices.AudioService"/>'s meters, and only while a WoW trigger is on: one peak
-/// read every 25 ms while WoW is running, one look for WoW every 3 seconds while it isn't. The UI thread because
-/// Windows hands out the same sound device objects AudioService holds there, and .NET reuses its wrappers for them.
+/// Two parts, both only while a WoW trigger is on:
+/// - On the UI thread, like <see cref="Devices.AudioService"/>'s meters: finds WoW's audio sessions (every 3 seconds
+///   while it isn't running) and reads their peak level every 25 ms for the page's meter. The UI thread because Windows
+///   hands out the same sound device objects AudioService holds there, and .NET reuses its wrappers for them.
+/// - On its own thread: captures WoW's sound (<see cref="ProcessLoopback"/>) and matches it against the splash itself
+///   (<see cref="SplashMatcher"/>), with each trigger's sensitivity deciding how close is close enough.
+/// If Windows won't capture (Windows 10), each trigger falls back to a <see cref="SplashDetector"/> on the peak level,
+/// which only knows "loud after quiet".
 /// </summary>
 public sealed class WowFishing : IDisposable
 {
@@ -25,6 +29,9 @@ public sealed class WowFishing : IDisposable
     (string Id, SplashDetector Detector)[] _listeners = [];
     long _nextScan;
     uint _wowPid;
+    Ears? _ears;
+    uint _earsFailedPid;
+    volatile Rule[] _rules = [];
     WowListenState _state;
     float _level;
 
@@ -48,6 +55,24 @@ public sealed class WowFishing : IDisposable
     public static float ThresholdDb(string? sensitivity) =>
         Sensitivities.FirstOrDefault(s => s.Value == sensitivity).Db is > 0 and var db ? db : 12;
 
+    /// <summary>
+    /// How close to a splash the sound must be, per sensitivity. Tested on WoW's own sound files: the splashes match at
+    /// 0.98 or better and within 4.5 dB of tone, even quiet, muffled or over noise; the cast, the reel-in and a noise
+    /// swell are 6.8 dB off or more.
+    /// </summary>
+    public static (float MinCorr, float MaxShapeDb, float MinRiseDb) MatchRule(string? sensitivity) => sensitivity switch
+    {
+        "low" => (0.90f, 4.5f, 8),
+        "high" => (0.80f, 6.5f, 3),
+        _ => (0.85f, 5.5f, 5),
+    };
+
+    /// <summary>One splash plays for about 3 seconds; one bite per splash.</summary>
+    const int MatchCooldownMs = 3000;
+
+    /// <summary>True while WoW's sound is being matched against the splash, false when it's going by level alone.</summary>
+    public bool MatchingSound => _ears is { Running: true };
+
     /// <summary>Create on the UI thread.</summary>
     public WowFishing(Dispatcher ui)
     {
@@ -58,13 +83,21 @@ public sealed class WowFishing : IDisposable
     /// <summary>The WoW triggers that are on, with their sensitivities. None stops listening. UI thread.</summary>
     public void SetTriggers(IEnumerable<(string Id, string? Sensitivity)> triggers)
     {
+        var list = triggers.ToList();
         var old = _listeners;
-        _listeners = triggers.Select(t =>
+        _listeners = list.Select(t =>
         {
             // Keep a trigger's detector (and its background level) when only something else changed.
             var d = old.FirstOrDefault(o => o.Id == t.Id).Detector ?? new SplashDetector();
             d.ThresholdDb = ThresholdDb(t.Sensitivity);
             return (t.Id, d);
+        }).ToArray();
+
+        var oldRules = _rules;
+        _rules = list.Select(t =>
+        {
+            var (corr, shape, rise) = MatchRule(t.Sensitivity);
+            return new Rule(t.Id, corr, shape, rise) { LastHit = oldRules.FirstOrDefault(r => r.Id == t.Id)?.LastHit ?? long.MinValue / 2 };
         }).ToArray();
 
         if (_listeners.Length > 0 && !_timer.IsEnabled)
@@ -79,6 +112,7 @@ public sealed class WowFishing : IDisposable
     void Stop()
     {
         _timer.Stop();
+        StopEars();
         Release(_sessions);
         _level = 0;
         SetState(WowListenState.Stopped);
@@ -108,13 +142,21 @@ public sealed class WowFishing : IDisposable
             // No WoW: nothing to read until the next look, so tick slowly instead of every 25 ms.
             _timer.Interval = TimeSpan.FromMilliseconds(_sessions.Count == 0 ? 500 : 25);
         }
-        if (_sessions.Count == 0) { _level = 0; return; }
+        if (_sessions.Count == 0) { _level = 0; StopEars(); return; }
+        if (_ears is { Failed: true } failed)
+        {
+            _earsFailedPid = failed.Pid;
+            StopEars();
+            foreach (var l in _listeners) l.Detector.Reset();
+        }
+        if (_ears?.Pid != _wowPid && _wowPid != _earsFailedPid) StartEars(_wowPid);
 
         float peak = 0;
         foreach (var meter in _sessions)
             if (meter.GetPeakValue(out var p) == 0 && p > peak) peak = p;
 
         _level = peak;
+        if (_ears != null) return;   // matching the sound itself; the level is only for the meter
         foreach (var (id, detector) in _listeners)
         {
             if (!detector.Feed(peak, now)) continue;
@@ -123,6 +165,95 @@ public sealed class WowFishing : IDisposable
             Recorder.Mark($"detected: {heard}");
             Bite?.Invoke(id);
         }
+    }
+
+    // ---------------- matching the splash ----------------
+
+    void StartEars(uint pid)
+    {
+        StopEars();
+        var ears = new Ears(pid);
+        var ui = _timer.Dispatcher;
+        var matcher = new SplashMatcher();
+        long nextQpc = 0, lastNear = 0;
+
+        void OnFrame(SplashScore? scored)
+        {
+            if (scored is not { } score) return;
+            long now = Environment.TickCount64;
+            bool any = false;
+            foreach (var rule in _rules)
+            {
+                if (score.Corr < rule.MinCorr || score.ShapeDb > rule.MaxShapeDb || score.RiseDb < rule.MinRiseDb) continue;
+                any = true;
+                if (now - rule.LastHit < MatchCooldownMs) continue;
+                rule.LastHit = now;
+                SwitchLog.Write($"WoW fishing: splash heard ({score})");
+                Recorder.Mark($"detected: {score}");
+                var id = rule.Id;
+                ui.BeginInvoke(() => Bite?.Invoke(id));
+            }
+            // Close calls go in a recording too, at most one a second, to see where the line should be.
+            if (!any && score.Corr >= 0.6f && score.ShapeDb <= 9 && score.RiseDb >= 2 && now - lastNear >= 1000)
+            {
+                lastNear = now;
+                Recorder.Mark($"near: {score}");
+            }
+        }
+
+        ears.Thread = new Thread(() =>
+        {
+            try
+            {
+                ProcessLoopback.Run(pid, () => ears.Stopping, (stereo, frames, _, qpc) =>
+                {
+                    // No packets while WoW plays nothing: that's quiet, which the match needs to see before a splash.
+                    if (nextQpc != 0 && qpc - nextQpc > 200_000)
+                        matcher.FeedSilence((int)Math.Min((qpc - nextQpc) * SplashMatcher.Rate / 10_000_000, SplashMatcher.Rate), OnFrame);
+                    nextQpc = qpc + frames * 10_000_000L / SplashMatcher.Rate;
+                    matcher.Feed(stereo, OnFrame);
+                }, started: () =>
+                {
+                    ears.Running = true;
+                    SwitchLog.Write("WoW fishing: matching WoW's sound against the splash");
+                    ui.BeginInvoke(() => StateChanged?.Invoke());
+                });
+            }
+            catch (Exception ex)
+            {
+                SwitchLog.Write($"WoW fishing: can't capture WoW's sound, going by its level instead: {ex.Message}");
+                ears.Failed = true;
+            }
+            finally
+            {
+                ears.Running = false;
+                ui.BeginInvoke(() => StateChanged?.Invoke());
+            }
+        }) { IsBackground = true, Name = "WoW splash matcher", Priority = ThreadPriority.AboveNormal };
+        ears.Thread.SetApartmentState(ApartmentState.MTA);
+        _ears = ears;
+        ears.Thread.Start();
+    }
+
+    void StopEars()
+    {
+        if (_ears is not { } ears) return;
+        _ears = null;
+        ears.Stopping = true;
+        ears.Thread?.Join(500);
+    }
+
+    sealed class Ears(uint pid)
+    {
+        public readonly uint Pid = pid;
+        public Thread? Thread;
+        public volatile bool Stopping, Running, Failed;
+    }
+
+    /// <summary>A trigger's sensitivity as match limits. LastHit is only touched on the matcher's thread.</summary>
+    sealed record Rule(string Id, float MinCorr, float MaxShapeDb, float MinRiseDb)
+    {
+        public long LastHit { get; set; }
     }
 
     /// <summary>

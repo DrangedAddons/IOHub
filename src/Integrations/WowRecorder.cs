@@ -9,14 +9,14 @@ namespace IOHub.Integrations;
 /// Records World of Warcraft's own sound (nothing from other apps) to a WAV file, for tuning the fishing bite
 /// detector: every time it fires, and every click, key or controller press (to bookmark real bites), a line goes into
 /// a markers file beside the WAV with the time into the recording.
-/// Uses Windows' per-app loopback capture (Windows 11, or Windows 10 build 20348 and later).
+/// Uses <see cref="ProcessLoopback"/>, so Windows 11.
 ///
 /// 48 kHz stereo 16-bit: about 11 MB a minute. Stops by itself after <see cref="MaxLength"/>. Its own thread, which
 /// owns every COM object it makes.
 /// </summary>
 public sealed class WowRecorder : IDisposable
 {
-    public const int Rate = 48000, Channels = 2, BytesPerFrame = Channels * 2;
+    public const int Rate = ProcessLoopback.Rate, Channels = ProcessLoopback.Channels, BytesPerFrame = ProcessLoopback.BytesPerFrame;
     public static readonly TimeSpan MaxLength = TimeSpan.FromMinutes(15);
     public static string Folder => Path.Combine(AppInfo.DataDir, "wow-recordings");
 
@@ -78,81 +78,31 @@ public sealed class WowRecorder : IDisposable
 
     void Record(uint pid)
     {
-        IntPtr pParams = IntPtr.Zero, pVariant = IntPtr.Zero, pFormat = IntPtr.Zero;
-        IAudioClient? client = null;
-        IAudioCaptureClient? capture = null;
         FileStream? wav = null;
-        using var ready = new AutoResetEvent(false);
         try
         {
-            // AUDIOCLIENT_ACTIVATION_PARAMS: process loopback of the WoW process and its children, in a VT_BLOB PROPVARIANT.
-            pParams = Marshal.AllocHGlobal(12);
-            Marshal.WriteInt32(pParams, 0, 1);            // AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK
-            Marshal.WriteInt32(pParams, 4, (int)pid);
-            Marshal.WriteInt32(pParams, 8, 0);            // PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE
-            pVariant = Marshal.AllocHGlobal(24);
-            for (int i = 0; i < 24; i += 4) Marshal.WriteInt32(pVariant, i, 0);
-            Marshal.WriteInt16(pVariant, 0, 65);          // VT_BLOB
-            Marshal.WriteInt32(pVariant, 8, 12);          // cbSize
-            Marshal.WriteIntPtr(pVariant, 16, pParams);   // pBlobData
-
-            var done = new Completion();
-            ActivateAudioInterfaceAsync("VAD\\Process_Loopback", typeof(IAudioClient).GUID, pVariant, done, out var op);
-            if (!done.Done.Wait(5000)) throw new Exception("Windows didn't start the recording.");
-            op.GetActivateResult(out int hr, out var iface);
-            if (hr != 0) throw new Exception($"Windows refused to record WoW (0x{hr:X8}). It needs Windows 11.");
-            client = (IAudioClient)iface;
-
-            // Process loopback has no mix format of its own: ask for 48 kHz stereo 16-bit and let Windows convert.
-            pFormat = Marshal.AllocHGlobal(18);
-            Marshal.WriteInt16(pFormat, 0, 1);                       // WAVE_FORMAT_PCM
-            Marshal.WriteInt16(pFormat, 2, Channels);
-            Marshal.WriteInt32(pFormat, 4, Rate);
-            Marshal.WriteInt32(pFormat, 8, Rate * BytesPerFrame);
-            Marshal.WriteInt16(pFormat, 12, BytesPerFrame);
-            Marshal.WriteInt16(pFormat, 14, 16);
-            Marshal.WriteInt16(pFormat, 16, 0);
-            Check(client.Initialize(0, Loopback | EventCallback | AutoConvertPcm, 2_000_000, 0, pFormat, IntPtr.Zero), "set up");
-            Check(client.SetEventHandle(ready.SafeWaitHandle.DangerousGetHandle()), "set up");
-            var iid = typeof(IAudioCaptureClient).GUID;
-            Check(client.GetService(ref iid, out var svc), "set up");
-            capture = (IAudioCaptureClient)svc;
-
             wav = new FileStream(FilePath!, FileMode.Create, FileAccess.Write, FileShare.Read, 1 << 16);
             WriteHeader(wav, 0);
-            Check(client.Start(), "start");
-            Changed?.Invoke();
-
-            var buffer = new byte[Rate * BytesPerFrame / 10];
+            var file = wav;
+            var bytes = new byte[Rate * BytesPerFrame / 10];
             long nextQpc = 0;
             var presses = new PressWatcher(Mark);
-            while (!_stop && Elapsed < MaxLength)
-            {
-                // Every 10 ms at most, so a click's bookmark is within 10 ms of the click.
-                ready.WaitOne(10);
-                presses.Poll();
-                while (capture.GetNextPacketSize(out uint size) == 0 && size > 0)
+            ProcessLoopback.Run(pid,
+                stop: () => _stop || Elapsed >= MaxLength,
+                onPacket: (stereo, frames, _, qpc) =>
                 {
-                    if (capture.GetBuffer(out var data, out uint frames, out uint flags, out _, out ulong qpc) != 0) break;
-                    try
-                    {
-                        lock (_gate) { if (_startQpc == 0) _startQpc = (long)qpc; }
-                        // WoW playing nothing means no packets: fill the gap with silence so the markers line up.
-                        if (nextQpc != 0 && (long)qpc - nextQpc > 200_000)
-                            WriteSilence(wav, Math.Min(((long)qpc - nextQpc) * Rate / 10_000_000, Rate * 60L), ref buffer);
-                        nextQpc = (long)qpc + frames * 10_000_000L / Rate;
-
-                        int bytes = (int)frames * BytesPerFrame;
-                        if (buffer.Length < bytes) buffer = new byte[bytes];
-                        if ((flags & BufferSilent) != 0) Array.Clear(buffer, 0, bytes);
-                        else Marshal.Copy(data, buffer, 0, bytes);
-                        wav.Write(buffer, 0, bytes);
-                        Interlocked.Add(ref _frames, frames);
-                    }
-                    finally { capture.ReleaseBuffer(frames); }
-                }
-            }
-            client.Stop();
+                    lock (_gate) { if (_startQpc == 0) _startQpc = qpc; }
+                    // WoW playing nothing means no packets: fill the gap with silence so the markers line up.
+                    if (nextQpc != 0 && qpc - nextQpc > 200_000)
+                        WriteSilence(file, Math.Min((qpc - nextQpc) * Rate / 10_000_000, Rate * 60L), ref bytes);
+                    nextQpc = qpc + frames * 10_000_000L / Rate;
+                    var raw = MemoryMarshal.AsBytes(stereo);
+                    file.Write(raw);
+                    Interlocked.Add(ref _frames, frames);
+                },
+                started: () => Changed?.Invoke(),
+                // Every 10 ms at most, so a click's bookmark is within 10 ms of the click.
+                poll: presses.Poll);
         }
         catch (Exception ex)
         {
@@ -168,11 +118,6 @@ public sealed class WowRecorder : IDisposable
                 WriteHeader(wav, dataBytes);
                 wav.Dispose();
             }
-            if (capture != null) Marshal.ReleaseComObject(capture);
-            if (client != null) Marshal.ReleaseComObject(client);
-            if (pFormat != IntPtr.Zero) Marshal.FreeHGlobal(pFormat);
-            if (pVariant != IntPtr.Zero) Marshal.FreeHGlobal(pVariant);
-            if (pParams != IntPtr.Zero) Marshal.FreeHGlobal(pParams);
             lock (_gate)
             {
                 _markers?.Dispose();
@@ -253,67 +198,5 @@ public sealed class WowRecorder : IDisposable
         [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vk);
     }
 
-    static void Check(int hr, string what)
-    {
-        if (hr != 0) throw new Exception($"Couldn't {what} the recording (0x{hr:X8}).");
-    }
-
     public void Dispose() => Stop();
-
-    // ---------------- interop ----------------
-
-    const uint Loopback = 0x0002_0000, EventCallback = 0x0004_0000, AutoConvertPcm = 0x8000_0000;
-    const uint BufferSilent = 0x2;
-
-    [DllImport("Mmdevapi.dll", ExactSpelling = true, PreserveSig = false)]
-    static extern void ActivateAudioInterfaceAsync([MarshalAs(UnmanagedType.LPWStr)] string path,
-        [MarshalAs(UnmanagedType.LPStruct)] Guid riid, IntPtr activationParams,
-        IActivateAudioInterfaceCompletionHandler handler, out IActivateAudioInterfaceAsyncOperation operation);
-
-    /// <summary>Windows calls it on one of its own threads; IAgileObject says that's fine.</summary>
-    sealed class Completion : IActivateAudioInterfaceCompletionHandler, IAgileObject
-    {
-        public readonly ManualResetEventSlim Done = new();
-        public void ActivateCompleted(IActivateAudioInterfaceAsyncOperation operation) => Done.Set();
-    }
-
-    [ComImport, Guid("94EA2B94-E9CC-49E0-C0FF-EE64CA8F5B90"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    interface IAgileObject { }
-
-    [ComImport, Guid("41D949AB-9862-444A-80F6-C261334DA5EB"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    interface IActivateAudioInterfaceCompletionHandler
-    {
-        void ActivateCompleted(IActivateAudioInterfaceAsyncOperation operation);
-    }
-
-    [ComImport, Guid("72A22D78-CDE4-431D-B8CC-843A71199B6D"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    interface IActivateAudioInterfaceAsyncOperation
-    {
-        void GetActivateResult(out int result, [MarshalAs(UnmanagedType.IUnknown)] out object activated);
-    }
-
-    [ComImport, Guid("1CB9AD4C-DBFA-4C32-B178-C2F568A703B2"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    interface IAudioClient
-    {
-        [PreserveSig] int Initialize(int shareMode, uint streamFlags, long bufferDuration, long periodicity, IntPtr format, IntPtr sessionGuid);
-        [PreserveSig] int GetBufferSize(out uint frames);
-        [PreserveSig] int GetStreamLatency(out long latency);
-        [PreserveSig] int GetCurrentPadding(out uint frames);
-        [PreserveSig] int IsFormatSupported(int shareMode, IntPtr format, out IntPtr closest);
-        [PreserveSig] int GetMixFormat(out IntPtr format);
-        [PreserveSig] int GetDevicePeriod(out long defaultPeriod, out long minimumPeriod);
-        [PreserveSig] int Start();
-        [PreserveSig] int Stop();
-        [PreserveSig] int Reset();
-        [PreserveSig] int SetEventHandle(IntPtr handle);
-        [PreserveSig] int GetService(ref Guid iid, [MarshalAs(UnmanagedType.IUnknown)] out object service);
-    }
-
-    [ComImport, Guid("C8ADBD64-E71E-48A0-A4DE-185C395CD317"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    interface IAudioCaptureClient
-    {
-        [PreserveSig] int GetBuffer(out IntPtr data, out uint frames, out uint flags, out ulong devicePosition, out ulong qpcPosition);
-        [PreserveSig] int ReleaseBuffer(uint frames);
-        [PreserveSig] int GetNextPacketSize(out uint frames);
-    }
 }

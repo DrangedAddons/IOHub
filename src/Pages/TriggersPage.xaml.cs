@@ -488,8 +488,11 @@ public partial class TriggersPage : UserControl
             panel.Children.Add(level);
         }
 
-        panel.Children.Add(Note("Listens to WoW's own sound, so other apps don't count. It only takes a splash after a couple of quiet seconds, "
-            + "so casting, looting, fights and towns don't set it off."));
+        panel.Children.Add(Note(!listening || _engine.Wow.MatchingSound
+            ? "Listens to WoW's own sound, so other apps don't count, and matches it against the bite splash itself, so casting, reeling in, "
+              + "looting and fights don't set it off. Another angler's splash sounds the same, so fish a little away from others."
+            : "Listens to WoW's own sound, so other apps don't count. This Windows can't capture WoW's sound for matching the splash itself, "
+              + "so it goes by level: it only takes a loud sound after a couple of quiet seconds."));
 
         // The companion addon: quiets everything but effects while a pole is in hand, so the splash stands out.
         var fishio = Integrations.FishIOAddon.Find();

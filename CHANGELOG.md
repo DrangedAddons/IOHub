@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.0-beta.6
+- **WoW fishing bite recognises the splash itself.** It used to take any loud sound after a quiet spell. It now
+  captures WoW's sound and compares every 10 ms against the three bite splashes WoW plays (sound kit 3355): how the
+  loudness builds over the first 0.4 s, and how the sound splits from low to high. The cast, reeling in, looting and
+  most fight and town sounds don't match. It fires about 0.4 s into the splash.
+  - Tested on WoW's own sound files mixed into a fake session at different volumes, muffled and over noise: every
+    splash caught, nothing else. Not tried in game yet.
+  - Sensitivity now sets how close a match must be. One bite per splash: 3 s before the next.
+  - Another angler's splash plays the same sound, so it still counts. Fish a little away from others.
+  - Needs Windows 11 to capture WoW's sound. Elsewhere it goes by level as before.
+  - Recordings also list *near* matches, at most one a second, to tune the limits from.
+
 ## 0.9.0-beta.5
 - **Record WoW's sound** (WoW fishing bite trigger): records WoW's sound only, nothing from other apps, to a WAV,
   with a text file beside it listing every time the trigger thought it heard a bite. It's for tuning the detection
