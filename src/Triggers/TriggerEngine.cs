@@ -65,6 +65,7 @@ public sealed class TriggerEngine : IDisposable
             if (_profiles.Data.Triggers.FirstOrDefault(t => t.Id == id && t.Enabled) is { } t) _ = Fire(t, starting: true);
         });
         _wow.StateChanged += () => Dispatch(() => StateChanged?.Invoke());
+        _wow.Recorder.Changed += () => Dispatch(() => StateChanged?.Invoke());
         _hook = new KeyboardHook(OnKey);
         _detector.Fired += tag => OnGesture((Trigger)tag);
         _detector.Released += tag => OnReleased((Trigger)tag);

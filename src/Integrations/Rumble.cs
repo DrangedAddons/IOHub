@@ -22,14 +22,19 @@ public static class Rumble
     {
         if (Interlocked.Exchange(ref _busy, 1) == 1) return;
         ushort level = (ushort)Math.Clamp(strength * ushort.MaxValue, 0, ushort.MaxValue);
+        // Motors at low power sometimes barely spin up, so a light buzz felt different each time. Each buzz starts
+        // with a short kick at 80% or more, then holds the chosen strength.
+        ushort kick = Math.Max(level, (ushort)(0.8 * ushort.MaxValue));
         Task.Run(async () =>
         {
             try
             {
                 for (int i = 0; i < 2; i++)
                 {
+                    SetAll(kick, kick);
+                    await Task.Delay(45);
                     SetAll(level, level);
-                    await Task.Delay(220);
+                    await Task.Delay(175);
                     SetAll(0, 0);
                     if (i == 0) await Task.Delay(130);
                 }

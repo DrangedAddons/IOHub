@@ -7,7 +7,7 @@ namespace IOHub.Integrations;
 /// - it stays up for two samples or more (a click or a single footstep doesn't),
 /// - the game was quiet for <see cref="QuietMs"/> before the jump (the cast and the bobber landing come in a burst,
 ///   and fights or towns are never quiet that long),
-/// - the last hit was more than <see cref="CooldownMs"/> ago (looting and recasting are noisy).
+/// - the last hit was more than <see cref="CooldownMs"/> ago (looting is noisy).
 /// Pure logic, fed one peak level per sample, so it can be tested without sound.
 /// </summary>
 public sealed class SplashDetector
@@ -15,7 +15,8 @@ public sealed class SplashDetector
     /// <summary>How far above the background a splash must be. Lower = more sensitive.</summary>
     public float ThresholdDb { get; set; } = 12;
     public int QuietMs { get; set; } = 1500;
-    public int CooldownMs { get; set; } = 4000;
+    // Short enough that a bite right after a cast the detector mistook for one still counts.
+    public int CooldownMs { get; set; } = 2500;
 
     /// <summary>Anything quieter than this counts as silence, however quiet the background is.</summary>
     const float FloorDb = -48;

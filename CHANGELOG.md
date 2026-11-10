@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.0-beta.5
+- **Record WoW's sound** (WoW fishing bite trigger): records WoW's sound only, nothing from other apps, to a WAV,
+  with a text file beside it listing every time the trigger thought it heard a bite. It's for tuning the detection
+  against the real splash. *Open folder* shows the recordings. Stops by itself after 15 minutes (about 11 MB a minute).
+  Needs Windows 11.
+- **Rumble feels the same every time.** Each buzz starts with a short strong kick, then holds the chosen strength.
+  Light used to sometimes barely spin the motors.
+- **Fewer missed bites.** After a hit the trigger ignores sounds for 2.5 s instead of 4 s. When a cast was mistaken
+  for a bite, a fish biting soon after it used to be ignored.
+
 ## 0.9.0-beta.4
 - **FishIO companion addon.** The WoW fishing bite trigger now says whether FishIO is installed, and in which WoW
   version (*0.1.0 in WoW Forever*). FishIO turns WoW's music, ambience and chatter off while a fishing pole is in hand,

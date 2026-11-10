@@ -24,6 +24,7 @@ public sealed class WowFishing : IDisposable
     readonly Dictionary<uint, bool> _isWow = [];
     (string Id, SplashDetector Detector)[] _listeners = [];
     long _nextScan;
+    uint _wowPid;
     WowListenState _state;
     float _level;
 
@@ -35,6 +36,11 @@ public sealed class WowFishing : IDisposable
     public WowListenState State => _state;
     /// <summary>WoW's sound level right now, 0..1.</summary>
     public float Level => _level;
+    /// <summary>The WoW process being heard, or 0. For <see cref="WowRecorder"/>.</summary>
+    /// <summary>Records WoW's sound with every detection marked, for tuning.</summary>
+    public WowRecorder Recorder { get; } = new();
+
+    public uint WowPid => _sessions.Count > 0 ? _wowPid : 0;
 
     public static readonly (string Value, string Label, float Db)[] Sensitivities =
         [("low", "Low", 18), ("normal", "Normal", 12), ("high", "High", 8)];
@@ -91,7 +97,7 @@ public sealed class WowFishing : IDisposable
         if (now >= _nextScan)
         {
             Release(_sessions);
-            try { Scan(_sessions, _isWow); }
+            try { Scan(_sessions, _isWow, ref _wowPid); }
             catch (Exception ex) { SwitchLog.Write($"WoW fishing: couldn't look for WoW's sound: {ex.Message}"); }
             // WoW can move to another sound device when you change it in its settings, so keep looking.
             _nextScan = now + (_sessions.Count == 0 ? 3000 : 5000);
@@ -112,7 +118,9 @@ public sealed class WowFishing : IDisposable
         foreach (var (id, detector) in _listeners)
         {
             if (!detector.Feed(peak, now)) continue;
-            SwitchLog.Write($"WoW fishing: splash at {20 * MathF.Log10(Math.Max(peak, 1e-5f)):0} dB, background {detector.BaselineDb:0} dB");
+            string heard = $"splash at {20 * MathF.Log10(Math.Max(peak, 1e-5f)):0} dB, background {detector.BaselineDb:0} dB";
+            SwitchLog.Write($"WoW fishing: {heard}");
+            Recorder.Mark($"detected: {heard}");
             Bite?.Invoke(id);
         }
     }
@@ -121,7 +129,7 @@ public sealed class WowFishing : IDisposable
     /// Every WoW audio session on every active output device, as peak meters. The enumerator, device list and devices
     /// can be the very wrappers AudioService holds, so they're left to the GC and never released here.
     /// </summary>
-    static void Scan(List<IAudioMeterInformation> found, Dictionary<uint, bool> isWow)
+    static void Scan(List<IAudioMeterInformation> found, Dictionary<uint, bool> isWow, ref uint wowPid)
     {
         if (isWow.Count > 64) isWow.Clear();
         // By CLSID, cast only to the interface: the enumerator is one object per process, and when AudioService already
@@ -147,7 +155,7 @@ public sealed class WowFishing : IDisposable
                         if (session is IAudioSessionControl2 control && control.GetProcessId(out uint pid) == 0 && pid != 0)
                         {
                             if (!isWow.TryGetValue(pid, out keep)) isWow[pid] = keep = IsWowProcess(pid);
-                            if (keep && session is IAudioMeterInformation meter) found.Add(meter);
+                            if (keep && session is IAudioMeterInformation meter) { found.Add(meter); wowPid = pid; }
                             else keep = false;
                         }
                         if (!keep) Marshal.ReleaseComObject(session);
@@ -183,6 +191,7 @@ public sealed class WowFishing : IDisposable
 
     public void Dispose()
     {
+        Recorder.Dispose();
         if (_timer.IsEnabled) Stop();
     }
 
