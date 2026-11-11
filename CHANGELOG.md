@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.0-beta.4
+- **Turn off works on Bluetooth Xbox controllers.** *Turn off* said "connected by cable" for an Xbox controller on
+  Bluetooth, though its card said Wireless: it only went by the battery type, which Bluetooth Xbox pads don't report.
+  It now goes by Windows' wireless flag too, like the card. Turning off when left alone was skipping these controllers
+  for the same reason.
+- switch.log notes which Xbox controllers are on Bluetooth when turning one off.
+
 ## 0.10.0-beta.3
 - **Turn a controller off.** Each wireless controller's functions on the Devices page have *Turn off*, and triggers can
   do it too (*Change a device* → Controllers → *Turn off*, which turns off every wireless controller that's on).

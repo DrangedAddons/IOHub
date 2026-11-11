@@ -17,9 +17,18 @@ public static partial class ControllerPower
     /// <summary>Whether the controller in this slot runs on battery (a wired one is powered by its cable).</summary>
     public static bool IsWireless(int slot) => slot >= Pads.HidBase ? HidPads.IsBluetooth(slot) : XInputWireless(slot);
 
+    /// <summary>
+    /// The same test the Devices page uses: XInput's wireless flag, or running on battery. Xbox pads on Bluetooth set
+    /// the flag but report no battery type; pads on the Xbox Wireless Adapter can be the other way round.
+    /// </summary>
     static bool XInputWireless(int slot)
     {
-        try { return XInputGetBatteryInformation((uint)slot, 0, out var b) == 0 && b.BatteryType is 2 or 3; }
+        try
+        {
+            if (XInputGetCapabilities((uint)slot, 0, out var caps) != 0) return false;
+            if ((caps.Flags & 0x0002) != 0) return true; // XINPUT_CAPS_WIRELESS
+            return XInputGetBatteryInformation((uint)slot, 0, out var b) == 0 && b.BatteryType is 2 or 3;
+        }
         catch { return false; }
     }
 
@@ -51,7 +60,8 @@ public static partial class ControllerPower
 
         // Xbox pads on Bluetooth: drop the link, if it's clear which pad is in this slot.
         var bluetooth = InputDetector.GamepadPaths(includeXbox: true).Where(p => p.Xbox && p.Bluetooth).ToList();
-        int wirelessSlots = Enumerable.Range(0, XInputPad.Slots).Count(s => XInputGetCapabilities((uint)s, 0, out _) == 0 && XInputWireless(s));
+        int wirelessSlots = Enumerable.Range(0, XInputPad.Slots).Count(XInputWireless);
+        SwitchLog.Write($"Xbox pads on Bluetooth: {bluetooth.Count} ({string.Join(", ", bluetooth.Select(b => b.Path))}); wireless XInput slots: {wirelessSlots}");
         if (bluetooth.Count == 1 && wirelessSlots == 1)
         {
             var error = Bluetooth.Disconnect(bluetooth[0].Path);
