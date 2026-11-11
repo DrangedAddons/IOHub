@@ -6,7 +6,7 @@ using IOHub.Triggers;
 namespace IOHub.Devices;
 
 /// <summary>
-/// Turns wireless controllers off: the Xbox ones through XInput's own power-off call (the one Game Bar uses), with a
+/// Turns wireless controllers off: the Xbox ones through XInput's own (undocumented) power-off call, with a
 /// Bluetooth disconnect as the fallback; Switch pads with their sleep command; PlayStation pads by dropping their
 /// Bluetooth link, which is how a PlayStation turns them off too. A wired controller can't be turned off, and nothing
 /// can turn a wireless one on: its radio is off until its button is pressed.
@@ -171,7 +171,10 @@ public static partial class ControllerPower
         public short ThumbLX, ThumbLY, ThumbRX, ThumbRY; public ushort LeftMotor, RightMotor;
     }
 
-    /// <summary>Undocumented, ordinal 103 of every Windows 10/11 xinput1_4: what Game Bar's "turn off controller" uses.</summary>
+    /// <summary>
+    /// Undocumented, ordinal 103 of every Windows 10/11 xinput1_4. Known to work for Xbox 360 wireless pads; for Xbox
+    /// One and Series pads it depends on the connection, which is why the result is checked.
+    /// </summary>
     [DllImport("xinput1_4.dll", EntryPoint = "#103")] static extern uint XInputPowerOffController(uint slot);
     [DllImport("xinput1_4.dll")] static extern uint XInputGetCapabilities(uint slot, uint flags, out Capabilities caps);
     [DllImport("xinput1_4.dll")] static extern uint XInputGetBatteryInformation(uint slot, byte type, out Battery battery);
@@ -180,7 +183,8 @@ public static partial class ControllerPower
 /// <summary>
 /// Turns a wireless controller off after it's been left alone for a while (AppSettings.ControllerIdleOffMinutes), the
 /// way a console does. Left alone means no button held or changed and the sticks near the middle, so a drifting stick
-/// doesn't keep it awake. Reads the controllers about 7 times a second on its own thread, which costs next to nothing.
+/// doesn't keep it awake. Reads the controllers about 7 times a second on its own thread, which costs next to nothing
+/// and sends the controller nothing: XInput answers from the driver's copy of the last state it received.
 /// </summary>
 public sealed class ControllerIdle : IDisposable
 {
@@ -213,7 +217,6 @@ public sealed class ControllerIdle : IDisposable
                 foreach (var gone in _pads.Keys.Except(_slots).ToList()) _pads.Remove(gone);
                 foreach (var slot in _slots)
                     if (!_pads.ContainsKey(slot)) _pads[slot] = (0, now, ControllerPower.IsWireless(slot), false);
-                    else _pads[slot] = _pads[slot] with { Wireless = ControllerPower.IsWireless(slot) };
             }
             foreach (var slot in _slots)
             {

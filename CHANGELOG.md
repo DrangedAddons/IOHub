@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.0-beta.6
+- **IO Hub stays out of the way of a controller's own sleep.** It asked Xbox controllers for their battery level every
+  1.5 seconds; now it's once a minute (and when a controller connects). Whether that query reaches the controller is
+  up to Windows' driver, so it's kept rare. Everything else IO Hub reads (buttons, sticks, connected or not) comes
+  from Windows' copy of the controller's last report and sends the controller nothing. It only sends something when
+  it rumbles or you turn it off.
+- The idle watcher checks whether a controller is wireless once when it connects, not every few seconds.
+
 ## 0.10.0-beta.5
 - **Record WoW's sound is gone** from the WoW fishing bite trigger, with its *Open folder* button. It was for tuning the
   bite detection, which is done. Recordings already saved stay where they were.
@@ -14,7 +22,7 @@
 ## 0.10.0-beta.3
 - **Turn a controller off.** Each wireless controller's functions on the Devices page have *Turn off*, and triggers can
   do it too (*Change a device* → Controllers → *Turn off*, which turns off every wireless controller that's on).
-  - Xbox controllers go off through the same Windows call Game Bar uses. On Bluetooth, if that doesn't work, IO Hub
+  - Xbox controllers go off through Windows' own (undocumented) power-off call. On Bluetooth, if that doesn't work, IO Hub
     drops the Bluetooth link instead, which makes the controller turn itself off.
   - Switch pads get their own sleep command. PlayStation pads have their Bluetooth link dropped, as a PlayStation
     does.

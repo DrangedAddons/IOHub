@@ -14,6 +14,7 @@ public sealed class DeviceHub : IDisposable
     readonly DispatcherTimer _debounce;
     readonly Timer _xinputPoll;
     int _xinputFingerprint;
+    int _polls;
     bool _refreshing, _refreshAgain;
 
     public IReadOnlyList<DisplayDevice> Displays { get; private set; } = [];
@@ -47,7 +48,8 @@ public sealed class DeviceHub : IDisposable
         // Switch pads count too: one starting to send, or its battery level moving, redraws the Devices page.
         _xinputPoll = new Timer(_ =>
         {
-            int fp = InputDetector.XInputFingerprint() * 397 ^ HidPads.Fingerprint();
+            // The battery once a minute (every 40th poll); connecting and disconnecting every time.
+            int fp = InputDetector.XInputFingerprint(readBattery: Interlocked.Increment(ref _polls) % 40 == 0) * 397 ^ HidPads.Fingerprint();
             if (Interlocked.Exchange(ref _xinputFingerprint, fp) != fp) _ui.BeginInvoke(ScheduleRefresh);
         }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(1.5));
     }
@@ -92,7 +94,7 @@ public sealed class DeviceHub : IDisposable
                 Triggers.ControllerButtons.Names = NamesFor(Input.Controllers);
                 (var c, CameraError) = await cameras;
                 Cameras = c ?? [];
-                _xinputFingerprint = InputDetector.XInputFingerprint() * 397 ^ HidPads.Fingerprint();
+                _xinputFingerprint = InputDetector.XInputFingerprint(readBattery: false) * 397 ^ HidPads.Fingerprint();
             } while (_refreshAgain);
             LastUpdated = DateTime.Now;
             Refreshed?.Invoke();

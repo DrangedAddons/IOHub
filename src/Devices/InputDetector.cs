@@ -100,11 +100,14 @@ internal static partial class InputDetector
         return result;
     }
 
-    /// <summary>A cheap fingerprint of XInput state (connected slots and battery levels) for change polling.</summary>
-    public static int XInputFingerprint()
+    /// <summary>
+    /// A cheap fingerprint of XInput state (connected slots and battery levels) for change polling. The battery is only
+    /// asked for when <paramref name="readBattery"/> is set (once a minute); otherwise the last level read counts.
+    /// </summary>
+    public static int XInputFingerprint(bool readBattery)
     {
         int fp = 0;
-        foreach (var s in XInputSlots())
+        foreach (var s in XInputSlots(readBattery))
             fp |= (1 | ((s.Battery + 1) << 1) | (s.Wireless ? 1 << 4 : 0)) << (s.Index * 5);
         return fp;
     }
@@ -251,7 +254,15 @@ internal static partial class InputDetector
 
     sealed record XInputSlot(int Index, string TypeName, bool Wireless, int Battery);
 
-    static List<XInputSlot> XInputSlots()
+    // Last battery reading per slot: (wireless by battery, level). Kept so the change poll needn't ask every time.
+    static readonly (bool OnBattery, int Level)[] LastBattery = [(false, -1), (false, -1), (false, -1), (false, -1)];
+
+    /// <summary>
+    /// The connected XInput slots. Battery levels are asked for only when <paramref name="readBattery"/> is set: the
+    /// rest of what IO Hub asks an Xbox controller comes from the driver's copy, but whether a battery query reaches
+    /// the controller itself is up to the driver, and nothing IO Hub does should keep a controller from going to sleep.
+    /// </summary>
+    static List<XInputSlot> XInputSlots(bool readBattery = true)
     {
         var slots = new List<XInputSlot>();
         for (uint i = 0; i < 4; i++)
@@ -259,9 +270,12 @@ internal static partial class InputDetector
             try
             {
                 if (XInputGetCapabilities(i, 0, out var caps) != 0) continue;
-                int battery = -1;
-                bool onBattery = XInputGetBatteryInformation(i, 0, out var b) == 0 && b.BatteryType is >= 2 and <= 3;
-                if (onBattery) battery = b.BatteryLevel;
+                if (readBattery)
+                {
+                    bool read = XInputGetBatteryInformation(i, 0, out var b) == 0 && b.BatteryType is >= 2 and <= 3;
+                    LastBattery[i] = (read, read ? b.BatteryLevel : -1);
+                }
+                var (onBattery, battery) = LastBattery[i];
                 // Pads on the Xbox Wireless Adapter don't always set the wireless flag; running on battery says it too.
                 slots.Add(new XInputSlot((int)i, SubTypeName(caps.SubType), (caps.Flags & 0x0002) != 0 || onBattery, battery));
             }
