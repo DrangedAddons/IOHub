@@ -255,7 +255,7 @@ internal static partial class InputDetector
     sealed record XInputSlot(int Index, string TypeName, bool Wireless, int Battery);
 
     // Last battery reading per slot: (wireless by battery, level). Kept so the change poll needn't ask every time.
-    static readonly (bool OnBattery, int Level)[] LastBattery = [(false, -1), (false, -1), (false, -1), (false, -1)];
+    static readonly (bool OnBattery, int Level, bool Read)[] LastBattery = new (bool, int, bool)[4];
 
     /// <summary>
     /// The connected XInput slots. Battery levels are asked for only when <paramref name="readBattery"/> is set: the
@@ -269,13 +269,14 @@ internal static partial class InputDetector
         {
             try
             {
-                if (XInputGetCapabilities(i, 0, out var caps) != 0) continue;
-                if (readBattery)
+                if (XInputGetCapabilities(i, 0, out var caps) != 0) { LastBattery[i] = default; continue; }
+                // Once when it connects, then only while it's being used (see ControllerIdle.InUse).
+                if (!LastBattery[i].Read || (readBattery && ControllerIdle.InUse((int)i)))
                 {
                     bool read = XInputGetBatteryInformation(i, 0, out var b) == 0 && b.BatteryType is >= 2 and <= 3;
-                    LastBattery[i] = (read, read ? b.BatteryLevel : -1);
+                    LastBattery[i] = (read, read ? b.BatteryLevel : -1, true);
                 }
-                var (onBattery, battery) = LastBattery[i];
+                var (onBattery, battery, _) = LastBattery[i];
                 // Pads on the Xbox Wireless Adapter don't always set the wireless flag; running on battery says it too.
                 slots.Add(new XInputSlot((int)i, SubTypeName(caps.SubType), (caps.Flags & 0x0002) != 0 || onBattery, battery));
             }

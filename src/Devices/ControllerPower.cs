@@ -190,11 +190,22 @@ public sealed class ControllerIdle : IDisposable
 {
     readonly AppSettings _settings;
     readonly Timer _timer;
-    readonly Dictionary<int, (int Buttons, long LastUsed, bool Wireless, bool GaveUp)> _pads = [];
+    readonly Dictionary<int, (int Buttons, long LastUsed, bool Wireless, bool GaveUp, bool Resting)> _pads = [];
     List<int> _slots = [];
     long _nextScan;
     int _busy;
     const int StickRest = 8000; // about a quarter of the way out
+
+    // When each Xbox slot was last used, for InUse. Kept whatever the idle setting is.
+    static readonly long[] LastUsedXInput = new long[XInputPad.Slots];
+
+    /// <summary>
+    /// The Xbox controller in this slot was used in the last minute. IO Hub asks a controller for its battery level
+    /// only then: with IO Hub running, an Xbox controller didn't go to sleep by itself, and the battery query is the
+    /// one thing IO Hub asks that may reach the controller instead of Windows' copy of its last report.
+    /// </summary>
+    public static bool InUse(int slot) =>
+        slot is >= 0 and < XInputPad.Slots && Environment.TickCount64 - Volatile.Read(ref LastUsedXInput[slot]) < 60_000;
 
     public ControllerIdle(AppSettings settings)
     {
@@ -208,15 +219,24 @@ public sealed class ControllerIdle : IDisposable
         try
         {
             int minutes = _settings.ControllerIdleOffMinutes;
-            if (minutes <= 0) { _pads.Clear(); return; }
             long now = Environment.TickCount64;
             if (now >= _nextScan)
             {
                 _slots = Pads.Connected();
                 _nextScan = now + 5000;
-                foreach (var gone in _pads.Keys.Except(_slots).ToList()) _pads.Remove(gone);
+                foreach (var gone in _pads.Keys.Except(_slots).ToList())
+                {
+                    _pads.Remove(gone);
+                    SwitchLog.Write($"Controller in slot {gone + 1} disconnected");
+                }
                 foreach (var slot in _slots)
-                    if (!_pads.ContainsKey(slot)) _pads[slot] = (0, now, ControllerPower.IsWireless(slot), false);
+                {
+                    if (_pads.ContainsKey(slot)) continue;
+                    bool wireless = ControllerPower.IsWireless(slot);
+                    _pads[slot] = (0, now, wireless, false, false);
+                    if (slot < XInputPad.Slots) Volatile.Write(ref LastUsedXInput[slot], now);
+                    SwitchLog.Write($"Controller in slot {slot + 1} connected ({(wireless ? "wireless" : "wired")})");
+                }
             }
             foreach (var slot in _slots)
             {
@@ -225,7 +245,15 @@ public sealed class ControllerIdle : IDisposable
                     || Math.Abs((int)pad.LeftX) > StickRest || Math.Abs((int)pad.LeftY) > StickRest
                     || Math.Abs((int)pad.RightX) > StickRest || Math.Abs((int)pad.RightY) > StickRest;
                 p = p with { Buttons = pad.Buttons, LastUsed = used ? now : p.LastUsed };
-                if (!used && p.Wireless && !p.GaveUp && now - p.LastUsed >= minutes * 60_000L)
+                if (used && slot < XInputPad.Slots) Volatile.Write(ref LastUsedXInput[slot], now);
+                // A line when it's been left alone a minute (IO Hub stops asking it anything then) and when it's used again.
+                bool resting = now - p.LastUsed >= 60_000;
+                if (resting != p.Resting)
+                {
+                    p = p with { Resting = resting };
+                    SwitchLog.Write(resting ? $"Controller in slot {slot + 1} left alone for a minute" : $"Controller in slot {slot + 1} in use again");
+                }
+                if (minutes > 0 && !used && p.Wireless && !p.GaveUp && now - p.LastUsed >= minutes * 60_000L)
                 {
                     SwitchLog.Write($"Controller in slot {slot + 1} idle for {minutes} min: turning it off");
                     var error = ControllerPower.TurnOff(slot);

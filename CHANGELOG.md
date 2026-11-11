@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.0-beta.7
+- **A controller left alone isn't asked anything.** With IO Hub running, an Xbox controller stayed on past its own
+  15-minute sleep (it slept with IO Hub quit). The battery query is the one thing IO Hub asks that may reach the
+  controller, so IO Hub now asks it once when the controller connects and then only while it's being used. After a
+  minute untouched it's asked nothing until it's used again. The battery badge shows the last level read meanwhile.
+- switch.log notes when a controller connects (wireless or wired), when it's been left alone for a minute, when it's
+  used again and when it disconnects, so a controller that still won't sleep can be traced.
+
 ## 0.10.0-beta.6
 - **IO Hub stays out of the way of a controller's own sleep.** It asked Xbox controllers for their battery level every
   1.5 seconds; now it's once a minute (and when a controller connects). Whether that query reaches the controller is
