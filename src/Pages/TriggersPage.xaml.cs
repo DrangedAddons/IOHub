@@ -483,8 +483,6 @@ public partial class TriggersPage : UserControl
 
         // The companion addon: quiets everything but effects while a pole is in hand, so the splash stands out.
         panel.Children.Add(AddonsPage.FishIOStatus(() => OpenAddons?.Invoke()));
-
-        panel.Children.Add(WowRecording());
     }
 
     /// <summary>
@@ -563,57 +561,6 @@ public partial class TriggersPage : UserControl
 
         box.Children.Add(Note("Drag on the meter to set the quietest splash that rumbles: the grey tick shows how loud the last couple of seconds got, "
             + "the green one your last bite. Put the line above other anglers' splashes and under yours."));
-        return box;
-    }
-
-    /// <summary>
-    /// Record WoW's sound for tuning: a WAV of WoW only, with every detection marked in a text file beside it. Fish a
-    /// few casts, then send the two files over.
-    /// </summary>
-    UIElement WowRecording()
-    {
-        var recorder = _engine.Wow.Recorder;
-        var box = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
-        var row = new StackPanel { Orientation = Orientation.Horizontal };
-        var button = new Button
-        {
-            Style = Res<Style>(recorder.IsRecording ? "DangerButton" : "GhostButton"), Padding = new Thickness(12, 5, 12, 5), FontWeight = FontWeights.SemiBold,
-            Content = recorder.IsRecording ? "Stop recording" : "Record WoW's sound",
-            IsEnabled = recorder.IsRecording || _engine.Wow.WowPid != 0,
-            ToolTip = "For tuning the bite detection: records WoW's sound only, and marks every time it thought it heard a bite.",
-        };
-        button.Click += (_, _) =>
-        {
-            if (recorder.IsRecording) recorder.Stop();
-            else if (_engine.Wow.WowPid is var pid and not 0) recorder.Start(pid);
-        };
-        row.Children.Add(button);
-        var folder = new Button { Style = Res<Style>("GhostButton"), Padding = new Thickness(12, 5, 12, 5), Content = "Open folder", Margin = new Thickness(8, 0, 0, 0) };
-        folder.Click += (_, _) =>
-        {
-            Directory.CreateDirectory(Integrations.WowRecorder.Folder);
-            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Integrations.WowRecorder.Folder) { UseShellExecute = true }); } catch { }
-        };
-        row.Children.Add(folder);
-        var status = new TextBlock { Style = Res<Style>("Muted"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
-        row.Children.Add(status);
-        box.Children.Add(row);
-
-        void Show() => status.Text = recorder.IsRecording
-            ? $"Recording {recorder.Elapsed:m\\:ss} of {Integrations.WowRecorder.MaxLength.TotalMinutes:0}:00"
-            : recorder.Error ?? (_engine.Wow.WowPid == 0 ? "Start WoW to record it" : "");
-        Show();
-        if (recorder.IsRecording)
-        {
-            var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-            timer.Tick += (_, _) => Show();
-            status.Loaded += (_, _) => timer.Start();
-            status.Unloaded += (_, _) => timer.Stop();
-        }
-        box.Children.Add(Note("Helps tune the bite detection. Fish 10 to 15 casts with a pole in hand, then stop. Click the bobber just after "
-            + "each splash: your clicks, keys and controller presses are bookmarked, so they show where the real bites were. "
-            + "It saves WoW's sound only (about 11 MB a minute) and a list of those bookmarks and of when it thought it heard a bite. "
-            + "Typing keys are listed only as \"a typing key\", never which one. Needs Windows 11."));
         return box;
     }
 

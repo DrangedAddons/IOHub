@@ -43,11 +43,6 @@ public sealed class WowFishing : IDisposable
     public WowListenState State => _state;
     /// <summary>WoW's sound level right now, 0..1.</summary>
     public float Level => _level;
-    /// <summary>The WoW process being heard, or 0. For <see cref="WowRecorder"/>.</summary>
-    /// <summary>Records WoW's sound with every detection marked, for tuning.</summary>
-    public WowRecorder Recorder { get; } = new();
-
-    public uint WowPid => _sessions.Count > 0 ? _wowPid : 0;
 
     public static readonly (string Value, string Label, float Db)[] Sensitivities =
         [("low", "Low", 18), ("normal", "Normal", 12), ("high", "High", 8)];
@@ -173,7 +168,6 @@ public sealed class WowFishing : IDisposable
             if (!detector.Feed(peak, now)) continue;
             string heard = $"splash at {20 * MathF.Log10(Math.Max(peak, 1e-5f)):0} dB, background {detector.BaselineDb:0} dB";
             SwitchLog.Write($"WoW fishing: {heard}");
-            Recorder.Mark($"detected: {heard}");
             Bite?.Invoke(id);
         }
     }
@@ -226,7 +220,6 @@ public sealed class WowFishing : IDisposable
                     if (now - lastIgnored < MatchCooldownMs) continue;
                     lastIgnored = now;
                     SwitchLog.Write($"WoW fishing: ignored a splash {quiet} ({score})");
-                    Recorder.Mark($"ignored, too quiet: {score}");
                     continue;
                 }
                 pending ??= new Candidate(score);
@@ -236,7 +229,6 @@ public sealed class WowFishing : IDisposable
             if (!any && score.Corr >= 0.6f && score.ShapeDb <= 9 && score.RiseDb >= 2 && now - lastNear >= 1000)
             {
                 lastNear = now;
-                Recorder.Mark($"near: {score}");
             }
         }
 
@@ -252,11 +244,9 @@ public sealed class WowFishing : IDisposable
             if (margin <= 0)
             {
                 SwitchLog.Write($"WoW fishing: ignored, sounds like someone jumping or landing in the water ({heard})");
-                Recorder.Mark($"ignored, a jump: {heard}");
                 return;
             }
             SwitchLog.Write($"WoW fishing: splash heard ({heard})");
-            Recorder.Mark($"detected: {heard}");
             foreach (var rule in c.Rules)
             {
                 rule.LastHit = now;
@@ -469,7 +459,6 @@ public sealed class WowFishing : IDisposable
 
     public void Dispose()
     {
-        Recorder.Dispose();
         if (_timer.IsEnabled) Stop();
     }
 

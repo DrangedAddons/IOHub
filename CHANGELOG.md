@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.0-beta.5
+- **Record WoW's sound is gone** from the WoW fishing bite trigger, with its *Open folder* button. It was for tuning the
+  bite detection, which is done. Recordings already saved stay where they were.
+
 ## 0.10.0-beta.4
 - **Turn off works on Bluetooth Xbox controllers.** *Turn off* said "connected by cable" for an Xbox controller on
   Bluetooth, though its card said Wireless: it only went by the battery type, which Bluetooth Xbox pads don't report.

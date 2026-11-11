@@ -5,7 +5,7 @@ namespace IOHub.Integrations;
 /// <summary>
 /// Captures one process's sound (and its child processes'), nothing from other apps: Windows' per-app loopback
 /// (Windows 11, or Windows 10 build 20348 and later). 48 kHz stereo 16-bit, which Windows converts WoW's output to.
-/// Used by <see cref="WowRecorder"/> and <see cref="WowFishing"/>'s splash matcher, each on its own thread.
+/// Used by <see cref="WowFishing"/>'s splash matcher, on its own thread.
 /// </summary>
 static class ProcessLoopback
 {
