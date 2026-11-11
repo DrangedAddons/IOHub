@@ -120,6 +120,7 @@ public partial class DevicesPage : UserControl
         KeyboardList.ItemsSource = snap.Keyboards;
         MouseList.ItemsSource = snap.Mice;
         ControllerEmpty.Visibility = snap.Controllers.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ShowControllersOff();
         KeyboardEmpty.Visibility = snap.Keyboards.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         MouseEmpty.Visibility = snap.Mice.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         ControllerCount.Text = snap.Controllers.Count.ToString();

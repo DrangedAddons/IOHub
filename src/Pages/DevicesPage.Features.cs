@@ -26,6 +26,7 @@ public partial class DevicesPage
 
     const string MouseSettingsKey = FeatureService.ControllersId + ":settings";
     const string RumbleSettingsKey = FeatureService.ControllersId + ":rumble";
+    const string PowerSettingsKey = FeatureService.ControllersId + ":power";
 
     void InitFeatures(FeatureService features, Profiles.ProfileService profiles)
     {
@@ -105,6 +106,8 @@ public partial class DevicesPage
 
     UIElement FunctionsPanel(string key, List<DeviceFeature> features, object? device)
     {
+        // On a controller's card, Turn off is for that controller only.
+        if (device is InputDevice pad) features = features.Select(f => f.Id == "power" ? PowerFor(f, pad) : f).ToList();
         var stack = new StackPanel { Margin = new Thickness(0, 14, 0, 0) };
         stack.Children.Add(new Border { Height = 1, Background = Res<Brush>("LineBrush"), Margin = new Thickness(0, 0, 0, 8) });
         // Display cards are narrow, so their functions stack; sound rows are half width, so their first two columns are tighter.
@@ -117,7 +120,113 @@ public partial class DevicesPage
         if (key == FeatureService.ControllersId && FishIONote() is { } fishio) stack.Children.Add(fishio);
         if (key == FeatureService.ControllersId) stack.Children.Add(RumbleSettings());
         if (key == FeatureService.ControllersId) stack.Children.Add(MouseSettings());
+        if (key == FeatureService.ControllersId) stack.Children.Add(PowerSettings());
         return stack;
+    }
+
+    // ---------------- controller power (in the controller's functions) ----------------
+
+    DeviceFeature PowerFor(DeviceFeature all, InputDevice pad) => new()
+    {
+        Section = all.Section, DeviceId = all.DeviceId, DeviceName = pad.Name, Id = all.Id, Title = all.Title, Kind = all.Kind,
+        Run = (_, _) => Task.Run(() => pad.PadSlot < 0 ? "IO Hub can't tell which controller this is." : ControllerPower.TurnOff(pad.PadSlot)),
+        Detail = !pad.IsWireless ? "Wired: it stays on while plugged in"
+            : _settings.ControllerIdleOffMinutes > 0 ? $"Also by itself after {IdleText(_settings.ControllerIdleOffMinutes)} left alone (Power settings)"
+            : "Only by hand or a trigger (Power settings)",
+    };
+
+    static string IdleText(int minutes) => minutes >= 60 && minutes % 60 == 0 ? (minutes == 60 ? "1 hour" : $"{minutes / 60} hours") : $"{minutes} min";
+
+    static readonly int[] IdleChoices = [0, 5, 10, 15, 30, 60];
+
+    UIElement PowerSettings()
+    {
+        bool open = IsOpen(PowerSettingsKey);
+        var stack = new StackPanel { Margin = new Thickness(0, 10, 0, 0) };
+        stack.Children.Add(SettingsToggle("Power settings", "\uE7E8", PowerSettingsKey, open));
+        if (!open) return stack;
+
+        var row = new Grid { Margin = new Thickness(0, 10, 0, 0) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(150) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var label = new TextBlock { Text = "Turn off when left alone", Foreground = Res<Brush>("MutedBrush"), VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 4, 10, 0) };
+        Grid.SetColumn(label, 0); row.Children.Add(label);
+        var pills = new WrapPanel();
+        foreach (var minutes in IdleChoices)
+        {
+            var pill = new ToggleButton
+            {
+                Style = Res<Style>("PillToggle"), Content = minutes == 0 ? "Never" : $"After {IdleText(minutes)}",
+                IsChecked = minutes == _settings.ControllerIdleOffMinutes, Background = Res<Brush>("AccentBrush"), Margin = new Thickness(0, 0, 6, 6),
+            };
+            pill.Click += (_, _) =>
+            {
+                _settings.ControllerIdleOffMinutes = minutes;
+                _settings.Save();
+                Render();
+            };
+            pills.Children.Add(pill);
+        }
+        Grid.SetColumn(pills, 1); row.Children.Add(pills);
+        stack.Children.Add(row);
+        stack.Children.Add(new TextBlock
+        {
+            Style = Res<Style>("Muted"), TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.None, Margin = new Thickness(0, 6, 0, 0),
+            Text = "Only wireless controllers. Left alone means no button pressed and the sticks at rest. Nothing can turn a "
+                + "controller back on from the PC: its radio is off, so press its Xbox, PS or Home button.",
+        });
+        return stack;
+    }
+
+    /// <summary>The button that wakes a controller of this model.</summary>
+    static string WakeButton(string? model) => model switch
+    {
+        nameof(PadModel.DualShock4) or nameof(PadModel.DualSense) => "its PS button",
+        nameof(PadModel.SwitchPro) => "its Home button",
+        nameof(PadModel.JoyConLeft) or nameof(PadModel.JoyConRight) => "a button on it",
+        _ => "its Xbox button",
+    };
+
+    /// <summary>
+    /// Wireless controllers IO Hub has seen before that aren't connected now: off, out of range or unpaired. They can't
+    /// be turned on from here (nothing can), so each says which button wakes it, and can be forgotten.
+    /// </summary>
+    void ShowControllersOff()
+    {
+        ControllersOff.Children.Clear();
+        var off = _settings.KnownControllers.Where(k => _hub.Input.Controllers.All(c => c.Id != k.Id)).ToList();
+        if (off.Count == 0) return;
+
+        var title = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(2, 20, 0, 12) };
+        title.Children.Add(new TextBlock { Text = "Controllers that are off", Style = Res<Style>("SectionTitle") });
+        title.Children.Add(new TextBlock { Text = "seen before, not connected", Style = Res<Style>("CountPill"), Margin = new Thickness(10, 1, 0, 0) });
+        ControllersOff.Children.Add(title);
+        foreach (var known in off)
+        {
+            var row = new Grid();
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var tile = new Border { Style = Res<Style>("IconTile"), Child = new TextBlock { Text = "\uE7FC", Style = Res<Style>("Icon"), FontSize = 18, Foreground = Res<Brush>("FaintBrush") } };
+            Grid.SetColumn(tile, 0); row.Children.Add(tile);
+            var names = new StackPanel { Margin = new Thickness(14, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center };
+            names.Children.Add(new TextBlock { Text = known.Name, Style = Res<Style>("ItemTitle"), FontSize = 14.5 });
+            names.Children.Add(new TextBlock { Text = $"Off or disconnected. To turn it on, press {WakeButton(known.Model)}.", Style = Res<Style>("Muted"), Margin = new Thickness(0, 3, 0, 0) });
+            Grid.SetColumn(names, 1); row.Children.Add(names);
+            var forget = new Button
+            {
+                Style = Res<Style>("GhostButton"), Padding = new Thickness(10, 3, 10, 4), Content = "Forget", VerticalAlignment = VerticalAlignment.Center,
+                ToolTip = "Stop listing it here. It comes back the next time it connects.",
+            };
+            forget.Click += (_, _) =>
+            {
+                _settings.KnownControllers.Remove(known);
+                _settings.Save();
+                Render();
+            };
+            Grid.SetColumn(forget, 2); row.Children.Add(forget);
+            ControllersOff.Children.Add(new Border { Style = Res<Style>("Card"), Margin = new Thickness(0, 0, 0, 10), Child = row });
+        }
     }
 
     // ---------------- rumble settings (in the controller's functions) ----------------
@@ -394,6 +503,7 @@ public partial class DevicesPage
         if (f.DeviceId == FeatureService.ControllersId && f.Id == "rumble") detail = Integrations.Rumble.Current.Describe() + " (Rumble settings)";
         if (f.DeviceId == FeatureService.ControllersId && f.Id == "mouse" && _features!.Mouse.IsPaused) detail = "Paused: fullscreen app in front";
         if (f.DeviceId == FeatureService.ControllersId && f.Id == "mouse" && !_settings.ControllerMouse) detail = "Not allowed yet (Mouse mode settings)";
+        if (f.Detail != null) detail = f.Detail;
         cell.Children.Add(new TextBlock { Text = detail, Style = Res<Style>("Muted"), FontSize = 11.5, Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap, TextTrimming = TextTrimming.None });
         return cell;
     }

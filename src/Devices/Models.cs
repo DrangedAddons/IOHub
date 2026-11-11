@@ -120,6 +120,8 @@ public sealed class InputDevice
     public string Source { get; init; } = "";
     /// <summary>A PlayStation or Switch pad IO Hub reads itself; null for Xbox pads and anything else.</summary>
     public Triggers.PadModel? Model { get; init; }
+    /// <summary>Its slot in <see cref="Triggers.Pads"/> (XInput 0-3, PlayStation and Switch 4 and up), or -1.</summary>
+    public int PadSlot { get; init; } = -1;
     /// <summary>IO Hub can read its buttons and rumble it: an Xbox pad, or a PlayStation or Switch one.</summary>
     public bool IsUsablePad => Kind == InputKind.Controller && (Source.StartsWith("XInput") || Model != null);
     public int Interfaces { get; init; } = 1;

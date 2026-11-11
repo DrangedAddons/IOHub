@@ -37,6 +37,7 @@ internal static partial class InputDetector
                 Source = $"XInput · Slot {slot.Index + 1}",
                 Connection = slot.Wireless ? "Wireless" : "Wired",
                 IsWireless = slot.Wireless,
+                PadSlot = slot.Index,
                 BatteryLevel = slot.Battery,
             });
         }
@@ -63,14 +64,18 @@ internal static partial class InputDetector
             Connection = device.Connection, Interfaces = device.Interfaces, IsWireless = device.IsWireless,
             Source = "HID · read by IO Hub",
             Model = pad.Model,
+            PadSlot = pad.Slot,
             BatteryLevel = pad.Alive ? pad.Battery : -1,
         };
     }
 
-    public sealed record GamepadPath(string Path, ushort Vid, ushort Pid, bool Bluetooth);
+    public sealed record GamepadPath(string Path, ushort Vid, ushort Pid, bool Bluetooth, bool Xbox = false);
 
-    /// <summary>HID game controllers (not Xbox ones) with their USB IDs, without opening them. Cheap enough to call every second.</summary>
-    public static List<GamepadPath> GamepadPaths()
+    /// <summary>
+    /// HID game controllers with their USB IDs, without opening them; Xbox ones (XInput's) only when asked for. Cheap
+    /// enough to call every second.
+    /// </summary>
+    public static List<GamepadPath> GamepadPaths(bool includeXbox = false)
     {
         var result = new List<GamepadPath>();
         uint count = 0, size = (uint)Marshal.SizeOf<RawInputDeviceList>();
@@ -86,8 +91,11 @@ internal static partial class InputDetector
             if (GetRawInputDeviceInfoW(d.hDevice, RidiDeviceInfo, ref info, ref infoSize) == uint.MaxValue) continue;
             if (!(info.hidUsagePage == 1 && info.hidUsage is 4 or 5 or 8)) continue;
             var path = DeviceName(d.hDevice);
-            if (path == null || IsVirtual(path) || path.Contains("IG_", StringComparison.OrdinalIgnoreCase)) continue;
-            result.Add(new GamepadPath(path, (ushort)info.hidVendorId, (ushort)info.hidProductId, path.Contains(BluetoothHid, StringComparison.OrdinalIgnoreCase)));
+            if (path == null || IsVirtual(path)) continue;
+            bool xbox = path.Contains("IG_", StringComparison.OrdinalIgnoreCase);
+            if (xbox && !includeXbox) continue;
+            bool bluetooth = path.Contains(BluetoothHid, StringComparison.OrdinalIgnoreCase) || path.Contains(BluetoothLeHid, StringComparison.OrdinalIgnoreCase);
+            result.Add(new GamepadPath(path, (ushort)info.hidVendorId, (ushort)info.hidProductId, bluetooth, xbox));
         }
         return result;
     }
@@ -169,7 +177,7 @@ internal static partial class InputDetector
         path.Contains(@"\ROOT#", StringComparison.OrdinalIgnoreCase) ||
         path.Contains("RDP_", StringComparison.OrdinalIgnoreCase);
 
-    const string BluetoothHid = "{00001124-0000-1000-8000-00805f9b34fb}";
+    const string BluetoothHid = "{00001124-0000-1000-8000-00805f9b34fb}", BluetoothLeHid = "{00001812-0000-1000-8000-00805f9b34fb}";
 
     static string ConnectionFor(string path, string vid)
     {
@@ -252,9 +260,10 @@ internal static partial class InputDetector
             {
                 if (XInputGetCapabilities(i, 0, out var caps) != 0) continue;
                 int battery = -1;
-                if (XInputGetBatteryInformation(i, 0, out var b) == 0 && b.BatteryType is >= 2 and <= 3)
-                    battery = b.BatteryLevel;
-                slots.Add(new XInputSlot((int)i, SubTypeName(caps.SubType), (caps.Flags & 0x0002) != 0, battery));
+                bool onBattery = XInputGetBatteryInformation(i, 0, out var b) == 0 && b.BatteryType is >= 2 and <= 3;
+                if (onBattery) battery = b.BatteryLevel;
+                // Pads on the Xbox Wireless Adapter don't always set the wireless flag; running on battery says it too.
+                slots.Add(new XInputSlot((int)i, SubTypeName(caps.SubType), (caps.Flags & 0x0002) != 0 || onBattery, battery));
             }
             catch (DllNotFoundException) { break; }
         }

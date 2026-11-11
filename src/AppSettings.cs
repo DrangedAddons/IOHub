@@ -34,6 +34,12 @@ public sealed class AppSettings
     /// </summary>
     public string? Rumble { get; set; }
 
+    // Controller power
+    /// <summary>Turn a wireless controller off after this many minutes left alone; 0 = never.</summary>
+    public int ControllerIdleOffMinutes { get; set; } = 15;
+    /// <summary>Wireless controllers seen before, so one that's off or disconnected still shows on the Devices page.</summary>
+    public List<KnownController> KnownControllers { get; set; } = [];
+
     // Updates
     public bool CheckForUpdates { get; set; } = true;
     public bool InstallUpdatesAutomatically { get; set; }
@@ -61,4 +67,12 @@ public sealed class AppSettings
         }
         catch { }
     }
+}
+
+/// <summary>A wireless controller IO Hub has seen: its InputDevice.Id, name and (for PlayStation and Switch) model.</summary>
+public sealed class KnownController
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string? Model { get; set; }
 }

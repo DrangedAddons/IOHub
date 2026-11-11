@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.10.0-beta.3
+- **Turn a controller off.** Each wireless controller's functions on the Devices page have *Turn off*, and triggers can
+  do it too (*Change a device* → Controllers → *Turn off*, which turns off every wireless controller that's on).
+  - Xbox controllers go off through the same Windows call Game Bar uses. On Bluetooth, if that doesn't work, IO Hub
+    drops the Bluetooth link instead, which makes the controller turn itself off.
+  - Switch pads get their own sleep command. PlayStation pads have their Bluetooth link dropped, as a PlayStation
+    does.
+  - A wired controller stays on while plugged in, so its *Turn off* says so.
+  - Every attempt and its result goes to switch.log.
+- **Controllers turn off when left alone**, after 15 minutes by default, like on a console. Left alone means no
+  button pressed and the sticks at rest, so a drifting stick doesn't keep it awake. Change it or set *Never* under the
+  controller's functions → *Power settings*. Only wireless controllers.
+- **Controllers that are off** are listed under the connected ones on the Devices page: each wireless controller IO
+  Hub has seen, with the button that wakes it. A PC can't turn a wireless controller on, because its radio is off, so
+  this list has no on button. *Forget* takes one off the list until it connects again.
+- A pad on the Xbox Wireless Adapter now counts as wireless even when it doesn't say so, going by its battery.
+
 ## 0.10.0-beta.2
 - **Addons page.** FishIO is managed on its own page in the sidebar, after Triggers, instead of inside the WoW
   fishing bite trigger. The trigger and the controller's functions on the Devices page just say whether it's installed,

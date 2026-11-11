@@ -57,6 +57,9 @@ public sealed class DeviceFeature
     public Task<string?> RestoreAsync(string noted) =>
         Restore != null ? Restore(noted) : Run(noted == "on" ? FeatureAction.On : FeatureAction.Off, null);
 
+    /// <summary>The line under its name on the Devices page, when it has something better to say than "One-off action".</summary>
+    public string? Detail { get; init; }
+
     public string OnLabel { get; init; } = "Turn on";
     public string OffLabel { get; init; } = "Turn off";
 
@@ -109,6 +112,15 @@ public sealed class FeatureService(DeviceHub hub, ProfileService profiles, Profi
             DeviceName = pads.Count == 1 ? pads[0].Name : "Controllers",
             Id = "rumble", Title = "Rumble", Kind = FeatureKind.Action,
             Run = (_, _) => { Integrations.Rumble.Play(); return Task.FromResult<string?>(null); },
+        });
+
+        // Turning wireless controllers off: the Devices page gives each controller card its own copy (just that pad).
+        list.Add(new DeviceFeature
+        {
+            Section = "Controllers", DeviceId = ControllersId,
+            DeviceName = pads.Count == 1 ? pads[0].Name : "Controllers",
+            Id = "power", Title = "Turn off", Kind = FeatureKind.Action,
+            Run = (_, _) => Task.Run(ControllerPower.TurnOffAll),
         });
 
         // Paired LG TVs, connected or not (a TV that's off isn't detected, and that's when you'd turn it on).

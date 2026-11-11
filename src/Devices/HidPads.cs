@@ -137,13 +137,33 @@ public static class HidPads
         foreach (var p in pads) p.SetRumble((byte)(left >> 8), (byte)(right >> 8));
     }
 
-    public readonly record struct Info(PadModel Model, bool Bluetooth, bool Alive, int Battery);
+    public readonly record struct Info(PadModel Model, bool Bluetooth, bool Alive, int Battery, int Slot);
 
     /// <summary>What's known about the pad at a HID path, if IO Hub reads it.</summary>
     public static Info? About(string path)
     {
         lock (Lock)
-            return Open.TryGetValue(path, out var p) ? new Info(p.Model, p.Bluetooth, p.Alive, p.Battery) : null;
+            return Open.TryGetValue(path, out var p) ? new Info(p.Model, p.Bluetooth, p.Alive, p.Battery, p.Slot) : null;
+    }
+
+    public static bool IsBluetooth(int slot)
+    {
+        lock (Lock) return Open.Values.FirstOrDefault(p => p.Slot == slot)?.Bluetooth == true;
+    }
+
+    /// <summary>Turns a pad off (both Joy-Cons of a pair). Returns an error message, or null.</summary>
+    public static string? TurnOff(int slot)
+    {
+        HidPad? one, partner = null;
+        lock (Lock)
+        {
+            one = Open.Values.FirstOrDefault(p => p.Slot == slot);
+            if (one is { Model: PadModel.JoyConLeft })
+                partner = Pairs(Open.Values.Where(p => p.Alive).ToList()).FirstOrDefault(x => x.Left == one).Right;
+        }
+        if (one == null || !one.Alive) return "It's not connected.";
+        var error = one.TurnOff();
+        return partner?.TurnOff() ?? error;
     }
 
     /// <summary>Changes when a pad starts or stops sending or its battery level moves, for the Devices page's change poll.</summary>
@@ -277,6 +297,27 @@ internal sealed class HidPad(string path, PadModel model, bool bluetooth, int sl
     {
         dev.Write(PadReports.SwitchRumble(Interlocked.Increment(ref _counter), _switchAmplitude));
         _nextSwitchRumble = Environment.TickCount64 + 40;
+    }
+
+    // ---------------- power ----------------
+
+    /// <summary>
+    /// Switch pads have a command for it (the one the console sends: disconnect and sleep). PlayStation pads turn off
+    /// when their Bluetooth link is dropped.
+    /// </summary>
+    public string? TurnOff()
+    {
+        if (!Bluetooth) return Devices.ControllerPower.WiredMessage;
+        var dev = _device;
+        if (PadReports.IsSwitch(Model) && dev != null)
+        {
+            bool sent = dev.Write(PadReports.SwitchCommand(Interlocked.Increment(ref _counter), 0x06, 0x00));
+            Profiles.SwitchLog.Write($"{PadReports.NameOf(Model)}: sleep command " + (sent ? "sent" : "failed"));
+            if (sent && Devices.ControllerPower.GoneSoon(() => !Alive)) return null;
+        }
+        var error = Devices.ControllerPower.Bluetooth.Disconnect(Path);
+        if (error != null) return error;
+        return Devices.ControllerPower.GoneSoon(() => !Alive) ? null : "Its Bluetooth link was dropped, but it's still sending.";
     }
 
     // ---------------- Switch start-up ----------------

@@ -25,6 +25,7 @@ public partial class MainWindow : Window
     readonly AddonsPage _addonsPage = new();
     readonly ProfileSwitcher _switcher;
     readonly ControllerMouse _mouse;
+    readonly ControllerIdle _idle;
     readonly WowFishing _fishing;
     readonly FeatureService _features;
     readonly TriggerEngine _engine;
@@ -53,6 +54,8 @@ public partial class MainWindow : Window
         _switcher.Notice += (title, detail, color) => { if (_settings.ShowNotices) _toast.Show(title, detail, color: color); };
         _hub.Refreshed += _switcher.Observe;
         _mouse = new ControllerMouse(_settings);
+        _idle = new ControllerIdle(_settings);
+        _hub.Refreshed += RememberControllers;
         _fishing = new WowFishing(Dispatcher);
         // The rumble's pattern lives on the Devices page now. Before, each trigger had a strength: keep the first one's.
         _settings.Rumble ??= Rumble.Setting.Parse(_profiles.Data.Triggers.FirstOrDefault(t => t.Feature == "rumble" && t.DeviceId == FeatureService.ControllersId)?.Value).ToString();
@@ -173,12 +176,25 @@ public partial class MainWindow : Window
         Activate();
     }
 
+    /// <summary>Notes each wireless controller seen, so the Devices page can list it as off when it's gone.</summary>
+    void RememberControllers()
+    {
+        bool changed = false;
+        foreach (var c in _hub.Input.Controllers.Where(c => c.IsUsablePad && c.IsWireless))
+        {
+            var known = _settings.KnownControllers.FirstOrDefault(k => k.Id == c.Id);
+            if (known == null) { _settings.KnownControllers.Add(new KnownController { Id = c.Id, Name = c.Name, Model = c.Model?.ToString() }); changed = true; }
+        }
+        if (changed) _settings.Save();
+    }
+
     public void Quit()
     {
         if (_quitting) return;
         _quitting = true;
         _engine.Dispose();
         _mouse.Dispose();
+        _idle.Dispose();
         _tray.Dispose();
         _hub.Dispose();
         _toast.Close();
