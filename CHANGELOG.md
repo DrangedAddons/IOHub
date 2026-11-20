@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.0-beta.8
+- **FishIO 0.1.1** has its own icon, IO Hub's purple Penrose triangle, so it no longer shows the gold DrangedAddons
+  one in WoW's addon list and the DrangedAddons window (`/dranged`). IO Hub updates the installed copy when it
+  starts, as it does for every new FishIO.
+
 ## 0.10.0-beta.7
 - **A controller left alone isn't asked anything.** With IO Hub running, an Xbox controller stayed on past its own
   15-minute sleep (it slept with IO Hub quit). The battery query is the one thing IO Hub asks that may reach the

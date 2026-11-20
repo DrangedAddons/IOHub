@@ -2,7 +2,8 @@
 ## Title: FishIO
 ## Notes: Focus mode for fishing: music, ambience and chatter off while a fishing pole is in hand, so the splash stands out.
 ## Author: Dranged
-## Version: 0.1.0
+## IconTexture: Interface\AddOns\FishIO\icon
+## Version: 0.1.1
 ## X-DrangedAddons-Games: _forever_
 ## SavedVariables: FishIODB
 

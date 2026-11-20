@@ -34,7 +34,7 @@ public static class FishIOAddon
     /// <summary>The WoW versions FishIO is made for (its .toc is for WoW Forever's client).</summary>
     public static readonly string[] Flavors = ["_forever_"];
 
-    static readonly string[] Files = ["FishIO.toc", "Core.lua"];
+    static readonly string[] Files = ["FishIO.toc", "Core.lua", "icon.tga"];
 
     /// <summary>The version inside IO Hub, from its embedded .toc.</summary>
     public static string Bundled { get; } = BundledVersion();
