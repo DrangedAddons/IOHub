@@ -73,6 +73,22 @@ public sealed class WowFishing : IDisposable
     /// <summary>How many of your recent splashes set your usual level.</summary>
     const int YourSplashes = 15;
 
+    /// <summary>
+    /// With FishIO's focus mode on (pole in hand) WoW's music and ambience are off, so the 200 ms before a splash are
+    /// near silent. On 26 Nov the four rumbles with FishIO quiet had -65 to -69 dBFS there; the 91 with music or
+    /// ambience playing had -30 to -7, and none of those were fishing. This sits in the gap.
+    /// </summary>
+    const float FishingQuietDb = -45;
+
+    // Whether FishIO is installed for the WoW that's playing: only then does a noisy background mean "not fishing".
+    // Looked up on the UI thread at each scan, read on the matcher's.
+    volatile bool _fishIOHere;
+    uint _flavorPid;
+    string? _flavor;
+
+    /// <summary>FishIO is installed for the WoW that's running, so "only while fishing" applies.</summary>
+    public bool FishIOHere => _fishIOHere;
+
     /// <summary>How loud the last splash that rumbled was, dBFS, for the meter. Null until one has.</summary>
     public float? LastSplashDb { get; private set; }
 
@@ -87,7 +103,7 @@ public sealed class WowFishing : IDisposable
     }
 
     /// <summary>The WoW triggers that are on, with their sensitivities. None stops listening. UI thread.</summary>
-    public void SetTriggers(IEnumerable<(string Id, string? Sensitivity, float? MinLevelDb)> triggers)
+    public void SetTriggers(IEnumerable<(string Id, string? Sensitivity, float? MinLevelDb, bool OnlyWhileFishing)> triggers)
     {
         var list = triggers.ToList();
         var old = _listeners;
@@ -103,7 +119,7 @@ public sealed class WowFishing : IDisposable
         _rules = list.Select(t =>
         {
             var (corr, shape, rise) = MatchRule(t.Sensitivity);
-            return new Rule(t.Id, corr, shape, rise, t.MinLevelDb) { LastHit = oldRules.FirstOrDefault(r => r.Id == t.Id)?.LastHit ?? long.MinValue / 2 };
+            return new Rule(t.Id, corr, shape, rise, t.MinLevelDb, t.OnlyWhileFishing) { LastHit = oldRules.FirstOrDefault(r => r.Id == t.Id)?.LastHit ?? long.MinValue / 2 };
         }).ToArray();
 
         if (_listeners.Length > 0 && !_timer.IsEnabled)
@@ -145,6 +161,7 @@ public sealed class WowFishing : IDisposable
             var state = _sessions.Count == 0 ? WowListenState.NoGame : WowListenState.Listening;
             if (state != _state) SwitchLog.Write(state == WowListenState.Listening ? "WoW fishing: hearing WoW" : "WoW fishing: WoW isn't making sound");
             SetState(state);
+            CheckFishIO();
             // No WoW: nothing to read until the next look, so tick slowly instead of every 25 ms.
             _timer.Interval = TimeSpan.FromMilliseconds(_sessions.Count == 0 ? 500 : 25);
         }
@@ -169,6 +186,30 @@ public sealed class WowFishing : IDisposable
             string heard = $"splash at {20 * MathF.Log10(Math.Max(peak, 1e-5f)):0} dB, background {detector.BaselineDb:0} dB";
             SwitchLog.Write($"WoW fishing: {heard}");
             Bite?.Invoke(id);
+        }
+    }
+
+    /// <summary>Which WoW is playing (its folder: _forever_, _retail_…) and whether FishIO is installed there.</summary>
+    void CheckFishIO()
+    {
+        if (_sessions.Count == 0) { _fishIOHere = false; return; }
+        if (_flavorPid != _wowPid)
+        {
+            _flavorPid = _wowPid;
+            try
+            {
+                using var p = Process.GetProcessById((int)_wowPid);
+                _flavor = System.IO.Path.GetFileName(System.IO.Path.GetDirectoryName(p.MainModule?.FileName));
+            }
+            catch { _flavor = null; }
+        }
+        bool here = _flavor != null && FishIOAddon.Find().Any(i => string.Equals(i.Flavor, _flavor, StringComparison.OrdinalIgnoreCase));
+        if (here != _fishIOHere)
+        {
+            _fishIOHere = here;
+            SwitchLog.Write(here ? $"WoW fishing: FishIO is installed for {_flavor}, so splashes only count while its focus mode is on"
+                                 : $"WoW fishing: FishIO isn't installed for {_flavor ?? "this WoW"}, so every splash counts");
+            StateChanged?.Invoke();
         }
     }
 
@@ -214,6 +255,10 @@ public sealed class WowFishing : IDisposable
                 string? quiet = rule.MinLevelDb is { } min
                     ? score.LevelDb < min ? $"below the {min:0} dBFS threshold" : null
                     : OtherAngler(score.LevelDb) is { } yours ? $"{yours - score.LevelDb:0} dB quieter than yours, someone else's" : null;
+                // Not fishing: FishIO would have WoW's music and ambience off if a pole were in hand.
+                float before = score.LevelDb - score.RiseDb;
+                if (quiet == null && rule.OnlyWhileFishing && _fishIOHere && before > FishingQuietDb)
+                    quiet = $"with music or ambience playing ({before:0} dBFS just before), so no pole in hand";
                 if (quiet != null)
                 {
                     burstHit = true;
@@ -388,7 +433,7 @@ public sealed class WowFishing : IDisposable
     }
 
     /// <summary>A trigger's sensitivity as match limits. LastHit is only touched on the matcher's thread.</summary>
-    sealed record Rule(string Id, float MinCorr, float MaxShapeDb, float MinRiseDb, float? MinLevelDb)
+    sealed record Rule(string Id, float MinCorr, float MaxShapeDb, float MinRiseDb, float? MinLevelDb, bool OnlyWhileFishing)
     {
         public long LastHit { get; set; }
     }

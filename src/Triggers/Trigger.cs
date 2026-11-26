@@ -102,6 +102,12 @@ public sealed class Trigger
     /// </summary>
     public float? MinLevelDb { get; set; }
 
+    /// <summary>
+    /// WoW fishing bite only: rumble only while FishIO's focus mode has WoW's music and ambience off, which is while a
+    /// fishing pole is in hand. Has no effect where FishIO isn't installed for the WoW that's running.
+    /// </summary>
+    public bool OnlyWhileFishing { get; set; } = true;
+
     /// <summary>True for triggers with a start and an end (Big Picture); false for one-shot key presses.</summary>
     public bool HasEnd => Kind == TriggerKind.SteamBigPicture;
 

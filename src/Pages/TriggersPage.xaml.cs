@@ -481,8 +481,37 @@ public partial class TriggersPage : UserControl
             : "Listens to WoW's own sound, so other apps don't count. This Windows can't capture WoW's sound for matching the splash itself, "
               + "so it goes by level: it only takes a loud sound after a couple of quiet seconds."));
 
+        panel.Children.Add(OnlyWhileFishing(t));
+
         // The companion addon: quiets everything but effects while a pole is in hand, so the splash stands out.
         panel.Children.Add(AddonsPage.FishIOStatus(() => OpenAddons?.Invoke()));
+    }
+
+    /// <summary>
+    /// "Only while fishing": FishIO turns WoW's music and ambience off while a pole is in hand, so a splash over music
+    /// or ambience isn't yours. Says plainly when FishIO isn't there to tell.
+    /// </summary>
+    UIElement OnlyWhileFishing(Trigger t)
+    {
+        var box = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
+        var toggle = new CheckBox
+        {
+            Style = Res<Style>("Switch"), IsChecked = t.OnlyWhileFishing,
+            Content = new TextBlock { Text = "Only while fishing", FontWeight = FontWeights.SemiBold },
+        };
+        toggle.Click += (_, _) => { t.OnlyWhileFishing = toggle.IsChecked == true; Save(); };
+        box.Children.Add(toggle);
+        bool fishIO = _engine.Wow.State == Integrations.WowListenState.Listening
+            ? _engine.Wow.FishIOHere
+            : Integrations.FishIOAddon.Find().Count > 0;
+        box.Children.Add(Note(!t.OnlyWhileFishing
+            ? "Every splash that matches rumbles, fishing or not."
+            : fishIO
+                ? "Rumbles only while FishIO has WoW's music and ambience off, which is while a fishing pole is in hand. "
+                  + "A splash over music or ambience is ignored. Turn this off if you fish with FishIO's focus mode off."
+                : "Needs FishIO, which isn't installed for this WoW: without it IO Hub can't tell when you're fishing, "
+                  + "so every splash that matches rumbles."));
+        return box;
     }
 
     /// <summary>

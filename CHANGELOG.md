@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.10.0-beta.9
+- **WoW fishing bite: only while fishing.** With FishIO installed, a splash only rumbles when WoW's music and
+  ambience were off just before it, which FishIO does while a fishing pole is in hand. A splash over music or
+  ambience isn't yours, so it's ignored. On a day of play this kept the 4 rumbles that came with FishIO's quiet and
+  dropped the 91 that came over music or ambience (-7 to -30 dBFS just before the splash; the quiet ones were
+  below -65, and the line sits at -45).
+  - *Only while fishing* is a new switch on the trigger, on by default. Turn it off to fish with FishIO's focus
+    mode off.
+  - Without FishIO installed for the WoW that's running, IO Hub can't tell when you're fishing, so every matching
+    splash still rumbles, and the trigger says so.
+  - switch.log notes each splash ignored this way, with how loud it was just before.
+
 ## 0.10.0-beta.8
 - **FishIO 0.1.1** has its own icon, IO Hub's purple Penrose triangle, so it no longer shows the gold DrangedAddons
   one in WoW's addon list and the DrangedAddons window (`/dranged`). IO Hub updates the installed copy when it

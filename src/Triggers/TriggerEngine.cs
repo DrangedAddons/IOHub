@@ -120,7 +120,7 @@ public sealed class TriggerEngine : IDisposable
         if (active.Any(t => t.Kind == TriggerKind.SteamBigPicture)) _bigPicture.Start();
         else _bigPicture.Stop();
 
-        _wow.SetTriggers(active.Where(t => t.Kind == TriggerKind.WowFishingBite).Select(t => (t.Id, (string?)t.Sensitivity, t.MinLevelDb)));
+        _wow.SetTriggers(active.Where(t => t.Kind == TriggerKind.WowFishingBite).Select(t => (t.Id, (string?)t.Sensitivity, t.MinLevelDb, t.OnlyWhileFishing)));
 
         // Forget switch-back state for triggers that were removed or turned off.
         foreach (var id in _engaged.Keys.Where(id => active.All(t => t.Id != id)).ToList()) _engaged.Remove(id);
