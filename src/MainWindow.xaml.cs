@@ -44,6 +44,7 @@ public partial class MainWindow : Window
 
         _hub = new DeviceHub(Dispatcher);
         _hub.Refreshed += () => UpdatedText.Text = $"Updated {_hub.LastUpdated:T}";
+        VersionText.Text = $"Version {AppUpdater.CurrentVersion}";
         // Needs the first device scan, so it runs on the first refresh rather than here.
         _hub.Refreshed += () => _profiles.SeedCurrentSetup(_hub);
 

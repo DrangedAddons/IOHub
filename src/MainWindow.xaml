@@ -28,6 +28,9 @@
                     </StackPanel>
                 </StackPanel>
 
+                <!-- The version, under the status (docked first, so it sits lowest) -->
+                <TextBlock x:Name="VersionText" DockPanel.Dock="Bottom" FontSize="11" Foreground="{StaticResource FaintBrush}" Margin="13,8,0,0"/>
+
                 <!-- Status -->
                 <Border DockPanel.Dock="Bottom" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource LineBrush}"
                         BorderThickness="1" CornerRadius="11" Padding="12,10">

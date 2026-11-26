@@ -7,6 +7,7 @@
   looked (*Updated to 0.1.1*), or when an installed copy is older than IO Hub's and couldn't be updated. Opening
   *Addons* clears the "updated" one. Development copies (with .git) don't count.
 - **Checks for updates every hour** instead of every six hours, still one small request to GitHub each time.
+- **The version is on the window**, at the bottom of the sidebar under the status.
 
 ## 0.10.0-beta.9
 - **WoW fishing bite: only while fishing.** With FishIO installed, a splash only rumbles when WoW's music and
