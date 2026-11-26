@@ -157,7 +157,7 @@ public partial class SettingsPage : UserControl
         rows.Add(Row($"Version {AppUpdater.CurrentVersion}" + (AppUpdater.IsBeta ? " (beta)" : ""), UpdateStatus(), buttons,
             warn: _updates.Error != null, hintRef: t => _updateStatus = t));
         rows.Add(Row("Check for updates automatically",
-            "Looks once shortly after starting and then every six hours. One small request to GitHub each time.",
+            "Looks once shortly after starting and then every hour. One small request to GitHub each time.",
             Switch(_settings.CheckForUpdates, v => { _settings.CheckForUpdates = v; _settings.Save(); })));
         rows.Add(Row("Get beta updates",
             "Try new features before everyone else. Betas can have rough edges. Turn this off to stick to full releases: "
@@ -172,7 +172,7 @@ public partial class SettingsPage : UserControl
             "Only while the window is closed, so it never interrupts you. It restarts straight back into the tray.",
             Switch(_settings.InstallUpdatesAutomatically, v => { _settings.InstallUpdatesAutomatically = v; _settings.Save(); },
                 enabled: _settings.CheckForUpdates)));
-        return Section("Updates", "", rows);
+        return Section("Updates", "", rows, badge: _updates.Available != null ? 1 : 0);
     }
 
     string UpdateStatus()
@@ -304,10 +304,17 @@ public partial class SettingsPage : UserControl
 
     // ---------------- pieces ----------------
 
-    UIElement Section(string title, string glyph, IEnumerable<UIElement> rows)
+    /// <param name="badge">A counter at the card's top right, like the sidebar's (0 = none).</param>
+    UIElement Section(string title, string glyph, IEnumerable<UIElement> rows, int badge = 0)
     {
         var stack = new StackPanel();
-        var header = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(20, 16, 20, 6) };
+        var header = new DockPanel { Margin = new Thickness(20, 16, 20, 6), LastChildFill = false };
+        if (badge > 0)
+        {
+            var pill = Ui.NavBadge.Pill(badge);
+            DockPanel.SetDock(pill, Dock.Right);
+            header.Children.Add(pill);
+        }
         header.Children.Add(new TextBlock { Text = glyph, FontFamily = Res<FontFamily>("IconFont"), FontSize = 15, Foreground = Res<Brush>("AccentBrush"), VerticalAlignment = VerticalAlignment.Center });
         header.Children.Add(new TextBlock { Text = title, Style = Res<Style>("SectionTitle"), Margin = new Thickness(10, 0, 0, 0) });
         stack.Children.Add(header);

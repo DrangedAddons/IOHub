@@ -60,8 +60,14 @@ public partial class MainWindow : Window
         // The rumble's pattern lives on the Devices page now. Before, each trigger had a strength: keep the first one's.
         _settings.Rumble ??= Rumble.Setting.Parse(_profiles.Data.Triggers.FirstOrDefault(t => t.Feature == "rumble" && t.DeviceId == FeatureService.ControllersId)?.Value).ToString();
         Rumble.Current = Rumble.Setting.Parse(_settings.Rumble);
-        // IO Hub owns the FishIO addon: bring installed copies up to the one it carries.
-        Task.Run(FishIOAddon.UpdateOutdated);
+        // IO Hub owns the FishIO addon: bring installed copies up to the one it carries. The first time, note what was
+        // there before, so an update now still shows on Addons.
+        if (_settings.SeenFishIOVersion == null)
+        {
+            _settings.SeenFishIOVersion = FishIOAddon.OldestInstalled() ?? FishIOAddon.Bundled;
+            _settings.Save();
+        }
+        Task.Run(FishIOAddon.UpdateOutdated).ContinueWith(_ => Dispatcher.BeginInvoke(UpdateBadges));
         _features = new FeatureService(_hub, _profiles, _switcher, _mouse);
         _engine = new TriggerEngine(_profiles, _switcher, _features, _fishing, _toast, Dispatcher, () => ProfileMatcher.Active(_profiles, _hub));
 
@@ -78,6 +84,9 @@ public partial class MainWindow : Window
         _triggersPage.OpenAddons += () => AddonsNav.IsChecked = true;
         _updates = new UpdateChecker(_settings, Dispatcher);
         _updates.Found += OnUpdateFound;
+        _updates.Changed += UpdateBadges;
+        _addonsPage.FishIONotice = () => FishIOAddon.Notice(_settings.SeenFishIOVersion);
+        _addonsPage.Changed += UpdateBadges;
         _settingsPage = new SettingsPage(_settings, _profiles, _engine, _hub, _updates, startInTray => _ = InstallUpdate(startInTray), Quit);
         PageHost.Content = _overviewPage;
 
@@ -142,9 +151,24 @@ public partial class MainWindow : Window
         if (await _updates.InstallAsync(startInTray)) Quit();
     }
 
+    /// <summary>The counters on the sidebar: Settings for an IO Hub update, Addons for FishIO news.</summary>
+    void UpdateBadges()
+    {
+        if (SettingsNav == null) return;
+        NavBadge.SetCount(SettingsNav, _updates?.Available != null ? 1 : 0);
+        NavBadge.SetCount(AddonsNav, FishIOAddon.Notice(_settings.SeenFishIOVersion) != null ? 1 : 0);
+    }
+
     void Nav_Checked(object sender, RoutedEventArgs e)
     {
         if (PageHost == null) return; // fires during InitializeComponent
+        // Looking at Addons counts as seeing what's new there; the page shows it once, then the counter goes.
+        if (sender == AddonsNav)
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
+            {
+                if (_settings.SeenFishIOVersion != FishIOAddon.Bundled) { _settings.SeenFishIOVersion = FishIOAddon.Bundled; _settings.Save(); }
+                UpdateBadges();
+            });
         PageHost.Content = sender == ProfilesNav ? _profilesPage
             : sender == DevicesNav ? _devicesPage
             : sender == TriggersNav ? _triggersPage

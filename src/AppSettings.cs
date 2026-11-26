@@ -40,6 +40,9 @@ public sealed class AppSettings
     /// <summary>Wireless controllers seen before, so one that's off or disconnected still shows on the Devices page.</summary>
     public List<KnownController> KnownControllers { get; set; } = [];
 
+    /// <summary>The FishIO version you last saw on the Addons page; a newer one IO Hub installed shows a counter.</summary>
+    public string? SeenFishIOVersion { get; set; }
+
     // Updates
     public bool CheckForUpdates { get; set; } = true;
     public bool InstallUpdatesAutomatically { get; set; }

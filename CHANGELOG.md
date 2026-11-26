@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.0-beta.10
+- **Counters on the sidebar.** *Settings* shows a counter when an IO Hub update is ready, and so does the *Updates*
+  card on that page. It stays until the update is installed.
+- **FishIO news on Addons.** *Addons* and FishIO's card show a counter when IO Hub has updated FishIO since you last
+  looked (*Updated to 0.1.1*), or when an installed copy is older than IO Hub's and couldn't be updated. Opening
+  *Addons* clears the "updated" one. Development copies (with .git) don't count.
+- **Checks for updates every hour** instead of every six hours, still one small request to GitHub each time.
+
 ## 0.10.0-beta.9
 - **WoW fishing bite: only while fishing.** With FishIO installed, a splash only rumbles when WoW's music and
   ambience were off just before it, which FishIO does while a fishing pole is in hand. A splash over music or

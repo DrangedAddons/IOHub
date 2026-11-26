@@ -145,6 +145,24 @@ public static class FishIOAddon
         finally { _checkedAt = default; }
     }
 
+    /// <summary>
+    /// What FishIO wants you to know, for the counter on Addons: an install IO Hub couldn't bring up to its copy, or
+    /// that it updated FishIO since you last looked at the Addons page (<paramref name="seenVersion"/>). Null: nothing.
+    /// Development copies don't count.
+    /// </summary>
+    public static string? Notice(string? seenVersion)
+    {
+        var own = Find().Where(i => !i.DevCopy).ToList();
+        if (own.Count == 0) return null;
+        if (own.Any(i => i.Outdated)) return $"Update to {Bundled} ready";
+        if (seenVersion != null && seenVersion != Bundled) return $"Updated to {Bundled}";
+        return null;
+    }
+
+    /// <summary>The oldest version installed (not counting development copies), or null when there's none.</summary>
+    public static string? OldestInstalled() =>
+        Find().Where(i => !i.DevCopy).Select(i => i.Version).OrderBy(v => Version.TryParse(v, out var x) ? x : new Version(0, 0)).FirstOrDefault();
+
     /// <summary>Updates every install older than IO Hub's copy. At startup, off the UI thread.</summary>
     public static void UpdateOutdated()
     {

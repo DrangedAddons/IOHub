@@ -4,7 +4,7 @@ using System.Windows.Threading;
 namespace IOHub.Updates;
 
 /// <summary>
-/// Looks for a newer release a little after start-up and then every six hours (if allowed), and holds what it
+/// Looks for a newer release a little after start-up and then every hour (if allowed), and holds what it
 /// found for the Settings page and the tray. One small request per check; nothing runs in between. UI thread only.
 /// </summary>
 public sealed class UpdateChecker
@@ -30,7 +30,7 @@ public sealed class UpdateChecker
         _timer = new DispatcherTimer(DispatcherPriority.Background, ui) { Interval = TimeSpan.FromSeconds(20) };
         _timer.Tick += async (_, _) =>
         {
-            _timer.Interval = TimeSpan.FromHours(6);
+            _timer.Interval = TimeSpan.FromHours(1);
             if (_settings.CheckForUpdates) await CheckAsync();
         };
     }

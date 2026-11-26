@@ -13,6 +13,11 @@ namespace IOHub.Pages;
 /// </summary>
 public partial class AddonsPage : UserControl
 {
+    /// <summary>What FishIO wants you to know (an update, or that IO Hub updated it), or null. Set by the main window.</summary>
+    public Func<string?>? FishIONotice { get; set; }
+    /// <summary>Something here was installed, updated or removed: the sidebar counter may change.</summary>
+    public event Action? Changed;
+
     public AddonsPage()
     {
         InitializeComponent();
@@ -25,7 +30,7 @@ public partial class AddonsPage : UserControl
         Cards.Children.Add(new Border
         {
             Style = (Style)FindResource("Card"), Padding = new Thickness(20, 16, 20, 18), Margin = new Thickness(0, 0, 12, 16),
-            Child = FishIOControls(Rebuild),
+            Child = FishIOControls(() => { Rebuild(); Changed?.Invoke(); }),
         });
     }
 
@@ -76,6 +81,13 @@ public partial class AddonsPage : UserControl
             Style = S(installs.Count > 0 ? "BadgeInfo" : "Badge"), Margin = new Thickness(10, 0, 0, 0),
             Child = new TextBlock { Text = installs.Count > 0 ? "Installed" : "Not installed" },
         });
+        if (FishIONotice?.Invoke() is { } notice)
+        {
+            var pill = Ui.NavBadge.Pill(1);
+            pill.Margin = new Thickness(10, 0, 0, 0);
+            head.Children.Add(pill);
+            head.Children.Add(new TextBlock { Text = notice, Foreground = B("AccentBrush"), FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) });
+        }
         box.Children.Add(head);
         box.Children.Add(new TextBlock
         {
