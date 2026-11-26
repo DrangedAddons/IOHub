@@ -1,95 +1,6 @@
 # Changelog
 
-## 0.10.0-beta.10
-- **Counters on the sidebar.** *Settings* shows a counter when an IO Hub update is ready, and so does the *Updates*
-  card on that page. It stays until the update is installed.
-- **FishIO news on Addons.** *Addons* and FishIO's card show a counter when IO Hub has updated FishIO since you last
-  looked (*Updated to 0.1.1*), or when an installed copy is older than IO Hub's and couldn't be updated. Opening
-  *Addons* clears the "updated" one. Development copies (with .git) don't count.
-- **Checks for updates every hour** instead of every six hours, still one small request to GitHub each time.
-- **The version is on the window**, at the bottom of the sidebar under the status.
-
-## 0.10.0-beta.9
-- **WoW fishing bite: only while fishing.** With FishIO installed, a splash only rumbles when WoW's music and
-  ambience were off just before it, which FishIO does while a fishing pole is in hand. A splash over music or
-  ambience isn't yours, so it's ignored. On a day of play this kept the 4 rumbles that came with FishIO's quiet and
-  dropped the 91 that came over music or ambience (-7 to -30 dBFS just before the splash; the quiet ones were
-  below -65, and the line sits at -45).
-  - *Only while fishing* is a new switch on the trigger, on by default. Turn it off to fish with FishIO's focus
-    mode off.
-  - Without FishIO installed for the WoW that's running, IO Hub can't tell when you're fishing, so every matching
-    splash still rumbles, and the trigger says so.
-  - switch.log notes each splash ignored this way, with how loud it was just before.
-
-## 0.10.0-beta.8
-- **FishIO 0.1.1** has its own icon, IO Hub's purple Penrose triangle, so it no longer shows the gold DrangedAddons
-  one in WoW's addon list and the DrangedAddons window (`/dranged`). IO Hub updates the installed copy when it
-  starts, as it does for every new FishIO.
-
-## 0.10.0-beta.7
-- **A controller left alone isn't asked anything.** With IO Hub running, an Xbox controller stayed on past its own
-  15-minute sleep (it slept with IO Hub quit). The battery query is the one thing IO Hub asks that may reach the
-  controller, so IO Hub now asks it once when the controller connects and then only while it's being used. After a
-  minute untouched it's asked nothing until it's used again. The battery badge shows the last level read meanwhile.
-- switch.log notes when a controller connects (wireless or wired), when it's been left alone for a minute, when it's
-  used again and when it disconnects, so a controller that still won't sleep can be traced.
-
-## 0.10.0-beta.6
-- **IO Hub stays out of the way of a controller's own sleep.** It asked Xbox controllers for their battery level every
-  1.5 seconds; now it's once a minute (and when a controller connects). Whether that query reaches the controller is
-  up to Windows' driver, so it's kept rare. Everything else IO Hub reads (buttons, sticks, connected or not) comes
-  from Windows' copy of the controller's last report and sends the controller nothing. It only sends something when
-  it rumbles or you turn it off.
-- The idle watcher checks whether a controller is wireless once when it connects, not every few seconds.
-
-## 0.10.0-beta.5
-- **Record WoW's sound is gone** from the WoW fishing bite trigger, with its *Open folder* button. It was for tuning the
-  bite detection, which is done. Recordings already saved stay where they were.
-
-## 0.10.0-beta.4
-- **Turn off works on Bluetooth Xbox controllers.** *Turn off* said "connected by cable" for an Xbox controller on
-  Bluetooth, though its card said Wireless: it only went by the battery type, which Bluetooth Xbox pads don't report.
-  It now goes by Windows' wireless flag too, like the card. Turning off when left alone was skipping these controllers
-  for the same reason.
-- switch.log notes which Xbox controllers are on Bluetooth when turning one off.
-
-## 0.10.0-beta.3
-- **Turn a controller off.** Each wireless controller's functions on the Devices page have *Turn off*, and triggers can
-  do it too (*Change a device* → Controllers → *Turn off*, which turns off every wireless controller that's on).
-  - Xbox controllers go off through Windows' own (undocumented) power-off call. On Bluetooth, if that doesn't work, IO Hub
-    drops the Bluetooth link instead, which makes the controller turn itself off.
-  - Switch pads get their own sleep command. PlayStation pads have their Bluetooth link dropped, as a PlayStation
-    does.
-  - A wired controller stays on while plugged in, so its *Turn off* says so.
-  - Every attempt and its result goes to switch.log.
-- **Controllers turn off when left alone**, after 15 minutes by default, like on a console. Left alone means no
-  button pressed and the sticks at rest, so a drifting stick doesn't keep it awake. Change it or set *Never* under the
-  controller's functions → *Power settings*. Only wireless controllers.
-- **Controllers that are off** are listed under the connected ones on the Devices page: each wireless controller IO
-  Hub has seen, with the button that wakes it. A PC can't turn a wireless controller on, because its radio is off, so
-  this list has no on button. *Forget* takes one off the list until it connects again.
-- A pad on the Xbox Wireless Adapter now counts as wireless even when it doesn't say so, going by its battery.
-
-## 0.10.0-beta.2
-- **Addons page.** FishIO is managed on its own page in the sidebar, after Triggers, instead of inside the WoW
-  fishing bite trigger. The trigger and the controller's functions on the Devices page just say whether it's installed,
-  with *Manage in Addons*.
-- **FishIO's controls are one row.** A dropdown of every WoW version IO Hub finds, each with FishIO's state there
-  (*0.1.0 installed*, *not installed*, *development copy*), then *Install* (or *Update*) and *Open folder*. Reinstall,
-  Remove and Copy folder path are in the *…* menu. A line underneath says which FishIO is there and where, plus the
-  out-of-date warning for versions other than WoW Forever.
-
-## 0.10.0-beta.1
-- **IO Hub installs FishIO.** IO Hub carries the FishIO addon inside the exe and updates installed copies when it
-  starts with a newer one, so there's nothing to download. On the WoW fishing bite trigger, and under the controller's
-  functions on the Devices page:
-  - Each install shows its WoW version, FishIO version and folder, with *Open folder*, *Reinstall* (or *Update*) and
-    *Remove*.
-  - *Install in* lists every WoW version IO Hub finds (Retail, Classic, Classic Era, Anniversary, PTRs…), WoW Forever
-    first. Pick one and install. FishIO is made for WoW Forever; elsewhere it warns that WoW may list it as out of date.
-  - A copy with `.git` in its folder is a development copy: shown, never changed or removed.
-  - FishIO is no longer in the DrangedAddons manager, so the two don't fight over its folder. Its source moved into
-    this repo (addons/FishIO).
+## 0.10.0
 - **PlayStation and Switch controllers work without extra software.** IO Hub reads DualShock 4, DualSense (and
   DualSense Edge), Switch Pro Controllers and Joy-Cons itself, over USB or Bluetooth. No DS4Windows, BetterJoy or Steam
   needed. They do everything an Xbox controller does here:
@@ -105,15 +16,48 @@
   - Three new buttons can be used in triggers: the PlayStation **touchpad click**, the DualSense **mic button** and the
     Switch **Capture** button.
   - A left and right Joy-Con together count as one controller.
-  - The Devices page shows these pads as *read by IO Hub*, with their battery level on Bluetooth, and gives them the
-    controller functions (Mouse mode, Rumble).
+  - The Devices page shows these pads as *read by IO Hub*, with their battery level on Bluetooth.
+  - On Bluetooth, the first rumble switches a PlayStation pad to its full report mode, as Steam does. A game that reads
+    it through old DirectInput loses it until it reconnects. If DS4Windows or BetterJoy hides the real pad, IO Hub
+    reads the Xbox pad they make instead.
 - **One press, one trigger.** In a game with Steam Input, Steam adds a virtual Xbox pad for a PlayStation or Switch pad,
   so IO Hub sees the same press twice. It now fires once.
-- Notes:
-  - On Bluetooth, the first rumble switches a PlayStation pad to its full report mode, as Steam does. A game that reads
-    it through old DirectInput loses it until it reconnects.
-  - If DS4Windows or BetterJoy hides the real pad, IO Hub reads the Xbox pad they make instead, as before.
-  - Tested against the report formats only; nobody has tried it on a real PlayStation or Switch pad yet.
+- **Controllers go to sleep again.** With IO Hub running, an Xbox controller stayed on past its own 15-minute sleep.
+  IO Hub asked it for its battery level every 1.5 seconds; now it asks once when the controller connects and then only
+  while it's being used. Everything else IO Hub reads comes from Windows' copy of the controller's last report and
+  sends the controller nothing.
+- **Turn a controller off.** Each wireless controller's functions on the Devices page have *Turn off*, and triggers can
+  do it too (*Change a device* → Controllers → *Turn off*, which turns off every wireless controller that's on).
+  - Xbox controllers go off through Windows' own (undocumented) power-off call, or on Bluetooth by dropping the link,
+    which makes the controller turn itself off. Switch pads get their own sleep command; PlayStation pads have their
+    Bluetooth link dropped, as a PlayStation does.
+  - A wired controller stays on while plugged in, so its *Turn off* says so.
+- **Controllers turn off when left alone**, after 15 minutes by default, like on a console. Left alone means no
+  button pressed and the sticks at rest, so a drifting stick doesn't keep it awake. Change it or set *Never* under the
+  controller's functions → *Power settings*. Only wireless controllers.
+- **Controllers that are off** are listed under the connected ones on the Devices page: each wireless controller IO
+  Hub has seen, with the button that wakes it. A PC can't turn a wireless controller on, because its radio is off, so
+  there's no on button. *Forget* takes one off the list until it connects again.
+- **IO Hub installs FishIO**, on a new *Addons* page in the sidebar. IO Hub carries the FishIO addon inside the exe and
+  updates installed copies when it starts with a newer one, so there's nothing to download.
+  - A dropdown of every WoW version IO Hub finds, each with FishIO's state there, then *Install* (or *Update*) and
+    *Open folder*. Reinstall, Remove and Copy folder path are in the *…* menu.
+  - A copy with `.git` in its folder is a development copy: shown, never changed or removed.
+  - FishIO is no longer in the DrangedAddons manager, so the two don't fight over its folder.
+  - **FishIO 0.1.1** has its own icon, IO Hub's purple Penrose triangle, in WoW's addon list and the DrangedAddons
+    window (`/dranged`).
+- **WoW fishing bite: only while fishing.** With FishIO installed, a splash only rumbles when WoW's music and ambience
+  were off just before it, which FishIO does while a fishing pole is in hand. A splash over music or ambience isn't
+  yours, so it's ignored. On a day of play this kept the 4 rumbles that came with FishIO's quiet and dropped the 91
+  that came over music or ambience. *Only while fishing* is a switch on the trigger, on by default; without FishIO for
+  the WoW that's running, every matching splash still rumbles, and the trigger says so.
+- **Record WoW's sound is gone** from the WoW fishing bite trigger. It was for tuning the bite detection, which is done.
+- **Counters on the sidebar.** *Settings* and its *Updates* card show a counter when an IO Hub update is ready. *Addons*
+  and FishIO's card show one when IO Hub has updated FishIO since you last looked, or when a copy couldn't be updated.
+- **Checks for updates every hour** instead of every six hours, still one small request to GitHub each time.
+- **The version is on the window**, at the bottom of the sidebar.
+- switch.log notes controllers connecting, going idle, being used again and disconnecting, each turn-off attempt and
+  its result, and each splash ignored because music or ambience was playing.
 
 ## 0.9.0
 - **WoW fishing bite trigger.** On the Triggers page, *New trigger* → Integrations → *WoW fishing bite*, next to Steam
